@@ -27,16 +27,20 @@ Each acquisition is made by:
 
 The dataset provides the ground truth for $36$ distinct classes 
 
-## Dependencies
-    anytree                   2.8.0                    pypi_0    pypi
-    asttokens                 2.2.1              pyhd8ed1ab_0    conda-forge      
+# Observations
+- when increasing the size of voxels the correlation increases
+
+# Dependencies
+    # Name                    Version                   Build  Channel
+    asttokens                 2.2.1              pyhd8ed1ab_0    conda-forge
     attrs                     22.2.0                   pypi_0    pypi
     autopep8                  1.6.0              pyhd3eb1b0_1
-    backcall                  0.2.0              pyh9f0ad1d_0    conda-forge      
-    backports                 1.0                pyhd8ed1ab_3    conda-forge      
+    backcall                  0.2.0              pyh9f0ad1d_0    conda-forge
+    backports                 1.0                pyhd8ed1ab_3    conda-forge
     backports.functools_lru_cache 1.6.4              pyhd8ed1ab_0    conda-forge
-    ca-certificates           2023.01.10           haa95532_0
-    certifi                   2022.12.7        py38haa95532_0
+    blas                      1.0                         mkl    anaconda
+    ca-certificates           2023.01.10           haa95532_0    anaconda
+    certifi                   2022.12.7        py38haa95532_0    anaconda
     click                     8.1.3                    pypi_0    pypi
     colorama                  0.4.6              pyhd8ed1ab_0    conda-forge
     configargparse            1.5.3                    pypi_0    pypi
@@ -52,9 +56,13 @@ The dataset provides the ground truth for $36$ distinct classes
     fastjsonschema            2.16.3                   pypi_0    pypi
     flask                     2.2.3                    pypi_0    pypi
     fonttools                 4.38.0                   pypi_0    pypi
+    h5py                      3.7.0            py38h3de5c98_0    anaconda
+    hdf5                      1.10.6               h1756f20_1    anaconda
+    icc_rt                    2022.1.0             h6049295_2    anaconda
     importlib-metadata        6.0.0              pyha770c72_0    conda-forge
     importlib-resources       5.12.0                   pypi_0    pypi
     importlib_metadata        6.0.0                hd8ed1ab_0    conda-forge
+    intel-openmp              2021.4.0          haa95532_3556    anaconda
     ipykernel                 6.15.0             pyh025b116_0    conda-forge
     ipython                   8.10.0             pyh08f2357_0    conda-forge
     ipywidgets                8.0.4                    pypi_0    pypi
@@ -71,11 +79,16 @@ The dataset provides the ground truth for $36$ distinct classes
     markupsafe                2.1.2                    pypi_0    pypi
     matplotlib                3.7.0                    pypi_0    pypi
     matplotlib-inline         0.1.6              pyhd8ed1ab_0    conda-forge
+    mkl                       2021.4.0           haa95532_640    anaconda
+    mkl-service               2.4.0            py38h2bbff1b_0    anaconda
+    mkl_fft                   1.3.1            py38h277e83a_0    anaconda
+    mkl_random                1.2.2            py38hf11a4ad_0    anaconda
     nbformat                  5.5.0                    pypi_0    pypi
     nest-asyncio              1.5.6              pyhd8ed1ab_0    conda-forge
     numpy                     1.24.2                   pypi_0    pypi
+    numpy-base                1.23.5           py38h4da318b_0    anaconda
     open3d                    0.16.0                   pypi_0    pypi
-    openssl                   1.1.1t               h2bbff1b_0
+    openssl                   1.1.1s               h2bbff1b_0    anaconda
     packaging                 23.0               pyhd8ed1ab_0    conda-forge
     pandas                    1.5.3                    pypi_0    pypi
     parso                     0.8.3              pyhd8ed1ab_0    conda-forge
@@ -119,3 +132,4 @@ The dataset provides the ground truth for $36$ distinct classes
     wincertstore              0.2              py38haa95532_2
     zeromq                    4.3.4                h0e60522_1    conda-forge
     zipp                      3.15.0             pyhd8ed1ab_0    conda-forge
+    zlib                      1.2.13               h8cc25b3_0    anaconda
