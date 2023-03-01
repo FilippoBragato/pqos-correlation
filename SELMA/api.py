@@ -89,6 +89,17 @@ class Sensor(Enum):
             return ".ply"
         else:
             return ".jpg"
+        
+    def getType(self):
+        """get the estention of the stored file according to the sensor
+
+        Returns:
+            str: estention of the file representing those objects
+        """
+        if self.value.find("CAM_") == -1:
+            return "PointCloud"
+        else:
+            return "Image"
 
 
 class Dataset:
@@ -101,11 +112,85 @@ class Dataset:
         """
         self.root_path = root
 
-    def _get_path_folder(self, scope: str, town: Town, weather: Weather, time: Time, sensor: Sensor):
+    def _get_path_archives_TLC(self):
+        """Get the path to the archive folder
+
+        Returns:
+            str: path to the archive folder
+        """
+        return os.path.join(self.root_path, "TLC_web", "archives")
+    
+    def get_routes_TLC(self):
+        """Get all the routes available in the archive folder
+
+        Returns:
+            list(str): list of the identifiers of all available folders
+        """
+        return os.listdir(self._get_path_archives_TLC())
+    
+    def _get_path_h5(self, route:str, weather:Weather, time:Time, sensor:Sensor):
+        """Get the path to the archive file whit the desired parameters
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+
+        Returns:
+            str: path to the archive file
+        """
+        return os.path.join(self._get_path_archives_TLC(),
+                            route,
+                            weather.value+time.value,
+                            sensor.value,
+                            route+"-"+weather.value+time.value+"-"+sensor.value+".hdf5")
+    
+    def open_measurement_series_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor):
+        """Open the archive of the desired simulation and returns a list containing temporal ordered data
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+
+        Returns:
+            list(dict): list of required data, each dict with keys ["type", "data", "class", "time"] containing respectively the type of the data, the data itself, the ground truth for each sample in data, the time sample
+        """
+        out = []
+        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+            main_group_key = list(f.keys())[0]
+            time_group_key = list(f[main_group_key].keys())
+            for k in time_group_key:
+                out.append({"data":f[main_group_key][k][()],
+                            "type": sensor.getType()})
+        return out
+    
+    def open_measurement_sample_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
+        """Open the archive of the desired simulation and returns the required sample
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+            time_step (int): the time step that has to be extracted from the serie
+
+        Returns:
+            dict: dict with keys ["type", "data", "class", "time"] containing respectively the type of the data, the data itself, the ground truth for each sample in data, the time sample
+        """
+        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+            main_group_key = list(f.keys())[0]
+            time_group_key = str(time_step).zfill(5)
+            out = ({"data":f[main_group_key][time_group_key][()],
+                    "type":sensor.getType()})
+        return out
+
+    def _get_path_folder_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor):
         """Get the folder where the specified data are stored
 
         Args:
-            scope (str): scope of the dataset can be CV or ...
             town (Town): The town in which the simulaiton has been performed
             weather (Weather): The wether with which the simulaiton has been performed
             time (Time): The time in which the simulaiton has been performed
@@ -115,16 +200,15 @@ class Dataset:
             str: path to the desired folder
         """
         return os.path.join(self.root_path,
-                            scope,
+                            "CV",
                             "dataset",
                             town.value+"_Opt_"+weather.value+time.value,
                             sensor.value)
 
-    def _get_path_file(self, scope: str, town: Town, weather: Weather, time: Time, sensor: Sensor, id: int):
+    def _get_path_file_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor, id: int):
         """Get the path where the desired data are stored
 
         Args:
-            scope (str): scope of the dataset can be CV or ...
             town (Town): The town in which the simulaiton has been performed
             weather (Weather): The wether with which the simulaiton has been performed
             time (Time): The time in which the simulaiton has been performed
@@ -134,14 +218,13 @@ class Dataset:
         Returns:
             str: path to the desired sample
         """
-        return os.path.join(self._get_path_folder(scope, town, weather, time, sensor),
+        return os.path.join(self._get_path_folder_CV(town, weather, time, sensor),
                             town.value+"_Opt_"+weather.value+time.value+"_"+str(id)+sensor.getEstention())
 
-    def get_ids(self, scope: str, town: Town, weather: Weather, time: Time, sensor: Sensor):
+    def get_ids_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor):
         """get all the IDs of a specific simulation
 
         Args:
-            scope (str): scope of the dataset can be CV or ...
             town (Town): The town in which the simulaiton has been performed
             weather (Weather): The wether with which the simulaiton has been performed
             time (Time): The time in which the simulaiton has been performed
@@ -150,13 +233,13 @@ class Dataset:
         Returns:
             list(int): list of all the available samples
         """
-        folder = self._get_path_folder(scope, town, weather, time, sensor)
+        folder = self._get_path_folder_CV(town, weather, time, sensor)
         folder_content = os.listdir(folder)
         folder_content = [file for file in folder_content if file.endswith(sensor.getEstention())]
         ids = [int(file.split('_')[3][:-4]) for file in folder_content]
         return ids
     
-    def open_sample(self, scope: str, town: Town, weather: Weather, time: Time, sensor: Sensor, id:int):
+    def open_sample_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor, id:int):
         """returns the value of the selected sample
 
         Args:
@@ -173,10 +256,9 @@ class Dataset:
         Returns:
             dict: with keys ["type", "data", "class"] containing respectively the type of the data, the data itself and the ground truth for each sample in data
         """
-        file_path = self._get_path_file(scope, town, weather, time, sensor, id)
-        out = {}
+        file_path = self._get_path_file_CV(town, weather, time, sensor, id)
+        out = {"type" : sensor.getType()}
         if (sensor.getEstention() == ".ply"):
-            out["type"] = "PointCloud"
             data = PlyData.read(file_path)
             points = [data['vertex'][axis] for axis in ['x', 'y', 'z']]
             points = np.array(points).T
