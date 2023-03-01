@@ -1,9 +1,8 @@
 import os
 from enum import Enum
-import open3d as o3d
-import seaborn as sns
 from plyfile import PlyData
 import numpy as np
+import h5py
 
 class Town(Enum):
     """Town available in the dataset
@@ -185,42 +184,10 @@ class Dataset:
             out["data"] = points
             out["class"] = objTag
         elif (sensor.getEstention() == ".jpg"):
-            out["type"] = "Image"
             raise ValueError("Implementami")
         else:
             raise ValueError("Unkown file estention")
         return out
 
-    def visualize_sample(self, sample:dict):
-        """visualize the sample
-
-        Args:
-            sample (dict): the sample to visualize 
-
-        Raises:
-            ValueError: if the function does not know how to handle the format
-        """
-        
-        if (sample["type"] == "PointCloud"):
-
-            palette = sns.color_palette("hsv", n_colors=36)
-            get_color = lambda tag:palette[tag%36]
-            colors = np.array(np.vectorize(get_color)(sample["class"])).T
-
-            pcd = o3d.geometry.PointCloud()
-            pcd.points = o3d.utility.Vector3dVector(sample["data"])
-            pcd.colors = o3d.utility.Vector3dVector(colors)
-
-            vis = o3d.visualization.Visualizer()
-            vis.create_window()
-            vis.add_geometry(pcd)
-            vis.get_render_option().background_color = np.asarray([0, 0, 0])
-            vis.run()
-            vis.destroy_window()
-
-        elif (sample["type"] == "PointCloud"):
-            raise ValueError("Implementami")
-        else:
-            raise ValueError("Unkown file estention")
         
     
