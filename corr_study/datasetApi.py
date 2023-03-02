@@ -3,6 +3,8 @@ from enum import Enum
 from plyfile import PlyData
 import numpy as np
 import h5py
+from .selmaImage import SelmaImage
+from .selmaPointCloud import SelmaPoinCloud
 
 class Town(Enum):
     """Town available in the dataset
@@ -91,7 +93,7 @@ class Sensor(Enum):
             return ".jpg"
         
     def getType(self):
-        """get the estention of the stored file according to the sensor
+        """get the type of the stored file according to the sensor
 
         Returns:
             str: estention of the file representing those objects
@@ -112,7 +114,7 @@ class Dataset:
         """
         self.root_path = root
 
-    def _get_path_archives_TLC(self):
+    def _get_path_archives_TLC(self) -> str:
         """Get the path to the archive folder
 
         Returns:
@@ -128,7 +130,7 @@ class Dataset:
         """
         return os.listdir(self._get_path_archives_TLC())
     
-    def _get_path_h5(self, route:str, weather:Weather, time:Time, sensor:Sensor):
+    def _get_path_h5(self, route:str, weather:Weather, time:Time, sensor:Sensor) -> str:
         """Get the path to the archive file whit the desired parameters
 
         Args:
@@ -156,15 +158,17 @@ class Dataset:
             sensor (Sensor): The sensor mesuring in the simulaiton
 
         Returns:
-            list(dict): list of required data, each dict with keys ["type", "data", "class", "time"] containing respectively the type of the data, the data itself, the ground truth for each sample in data, the time sample
+            list(Obj): list of required data
         """
         out = []
         with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = list(f[main_group_key].keys())
             for k in time_group_key:
-                out.append({"data":f[main_group_key][k][()],
-                            "type": sensor.getType()})
+                if sensor.getType() == "PointCloud":
+                    out.append(SelmaPoinCloud(f[main_group_key][k][()]), time_step=int(k))
+                elif sensor.getType() == "Image":
+                    out.append(SelmaImage(f[main_group_key][k][()]), time_step=int(k))
         return out
     
     def open_measurement_sample_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
@@ -178,16 +182,18 @@ class Dataset:
             time_step (int): the time step that has to be extracted from the serie
 
         Returns:
-            dict: dict with keys ["type", "data", "class", "time"] containing respectively the type of the data, the data itself, the ground truth for each sample in data, the time sample
+            obj: the desired item
         """
         with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = str(time_step).zfill(5)
-            out = ({"data":f[main_group_key][time_group_key][()],
-                    "type":sensor.getType()})
+            if sensor.getType() == "PointCloud":
+                out = SelmaPoinCloud(f[main_group_key][time_group_key][()], time_step=time_step)
+            elif sensor.getType() == "Image":
+                out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
         return out
 
-    def _get_path_folder_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor):
+    def _get_path_folder_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor) -> str:
         """Get the folder where the specified data are stored
 
         Args:
@@ -205,7 +211,7 @@ class Dataset:
                             town.value+"_Opt_"+weather.value+time.value,
                             sensor.value)
 
-    def _get_path_file_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor, id: int):
+    def _get_path_file_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor, id: int) -> str:
         """Get the path where the desired data are stored
 
         Args:
@@ -254,17 +260,15 @@ class Dataset:
             ValueError: if the function does not know how to handle the format
 
         Returns:
-            dict: with keys ["type", "data", "class"] containing respectively the type of the data, the data itself and the ground truth for each sample in data
+            obj: the desired sample
         """
         file_path = self._get_path_file_CV(town, weather, time, sensor, id)
-        out = {"type" : sensor.getType()}
         if (sensor.getEstention() == ".ply"):
             data = PlyData.read(file_path)
             points = [data['vertex'][axis] for axis in ['x', 'y', 'z']]
             points = np.array(points).T
             objTag = data['vertex']['ObjTag']
-            out["data"] = points
-            out["class"] = objTag
+            out = SelmaPoinCloud(points, objTag)
         elif (sensor.getEstention() == ".jpg"):
             raise ValueError("Implementami")
         else:

@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 
 # data
-/SELMA/dataset
+corr_study/dataset
