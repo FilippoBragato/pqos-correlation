@@ -30,7 +30,7 @@ class SelmaPoinCloud:
         vis.run()
         vis.destroy_window()
 
-    def voxelize(self, voxel_dimension:float, boundaries=None) -> voxels.Voxels:
+    def voxelize(self, voxel_dimension:float, boundaries=None, cumulative=False) -> voxels.Voxels:
         if boundaries is None:
 
             min_x = np.min(self.data[:, 0])
@@ -45,14 +45,17 @@ class SelmaPoinCloud:
         # Create the matrix for the voxelization
         vox = np.zeros((int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_dimension)), 
                         int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
-                        int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension))), dtype=int)
+                        int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension))), dtype=np.float64)
         
         for point in self.data:
             x = int(np.floor((point[0]-boundaries[0,0])/voxel_dimension))
             y = int(np.floor((point[1]-boundaries[1,0])/voxel_dimension))
             z = int(np.floor((point[2]-boundaries[2,0])/voxel_dimension))
             if x < vox.shape[0] and y < vox.shape[1] and z < vox.shape[2]:
-                vox[x, y, z] = 1 #TODO try += 1
+                if cumulative:
+                    vox[x, y, z] += 1
+                else: 
+                    vox[x, y, z] = 1
             
         return voxels.Voxels(vox, boundaries, voxel_dimension)
     

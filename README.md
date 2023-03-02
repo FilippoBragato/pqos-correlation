@@ -29,6 +29,7 @@ The dataset provides the ground truth for $36$ distinct classes
 
 # Observations
 - when increasing the size of voxels the correlation increases
+- cumulative voxels do not lead to sensible results in the correlation domain
 
 # Dependencies
     # Name                    Version                   Build  Channel
