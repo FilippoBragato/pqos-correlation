@@ -188,7 +188,8 @@ class Dataset:
             main_group_key = list(f.keys())[0]
             time_group_key = str(time_step).zfill(5)
             if sensor.getType() == "PointCloud":
-                out = SelmaPoinCloud(f[main_group_key][time_group_key][()], time_step=time_step)
+                array_data = f[main_group_key][time_group_key][()]
+                out = SelmaPoinCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,4].astype(int), time_step=time_step)
             elif sensor.getType() == "Image":
                 out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
         return out
