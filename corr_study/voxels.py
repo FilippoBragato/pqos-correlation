@@ -4,7 +4,7 @@ from . import correlation
 
 class Voxels:
 
-    def __init__(self, data:np.ndarray, boundaries:np.ndarray, voxel_size:float) -> None:
+    def __init__(self, data, boundaries:np.ndarray, voxel_size:float) -> None:
         self.data = data
         self.boundaries = boundaries
         self.voxel_size = voxel_size

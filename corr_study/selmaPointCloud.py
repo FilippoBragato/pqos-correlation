@@ -2,6 +2,7 @@ import open3d as o3d
 import seaborn as sns
 import numpy as np
 from . import voxels
+import sparse
 
 class SelmaPoinCloud:
     def __init__(self, data:np.ndarray, ground_truth:np.ndarray=None, time_step:int=-1) -> None:
@@ -42,20 +43,59 @@ class SelmaPoinCloud:
 
             boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
 
-        # Create the matrix for the voxelization
-        vox = np.zeros((int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_dimension)), 
+        x = np.floor((self.data[:, 0] - boundaries[0,0]) / voxel_dimension).astype(int)
+        y = np.floor((self.data[:, 1] - boundaries[1,0]) / voxel_dimension).astype(int)
+        z = np.floor((self.data[:, 2] - boundaries[2,0]) / voxel_dimension).astype(int)
+
+
+        coordinates = np.unique(np.array([x,y,z]), axis=1)
+        shape = (int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_dimension)), 
                         int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
-                        int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension))), dtype=np.float64)
+                        int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension)))
+
+        print(np.where(coordinates < 0)[1])
+        coordinates = coordinates[:, np.all(coordinates >= 0, axis=0)]
+        print(coordinates)
+        print(np.where(coordinates > shape[0])[1])
+        print(np.where(coordinates > shape[1])[1])
+        print(np.where(coordinates > shape[2])[1])
+
+        vox = sparse.COO(coordinates, 1, shape=shape)
+
+        # Create the matrix for the voxelization
+        # vox = np.zeros((int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_dimension)), 
+        #                 int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
+        #                 int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension))), dtype=np.float64)
         
-        for point in self.data:
-            x = int(np.floor((point[0]-boundaries[0,0])/voxel_dimension))
-            y = int(np.floor((point[1]-boundaries[1,0])/voxel_dimension))
-            z = int(np.floor((point[2]-boundaries[2,0])/voxel_dimension))
-            if x < vox.shape[0] and y < vox.shape[1] and z < vox.shape[2]:
-                if cumulative:
-                    vox[x, y, z] += 1
-                else: 
-                    vox[x, y, z] = 1
+        # for point in self.data:
+        #     x = int(np.floor((point[0]-boundaries[0,0])/voxel_dimension))
+        #     y = int(np.floor((point[1]-boundaries[1,0])/voxel_dimension))
+        #     z = int(np.floor((point[2]-boundaries[2,0])/voxel_dimension))
+        #     if x < vox.shape[0] and y < vox.shape[1] and z < vox.shape[2]:
+        #         if cumulative:
+        #             vox[x, y, z] += 1
+        #         else: 
+        #             vox[x, y, z] = 1
             
         return voxels.Voxels(vox, boundaries, voxel_dimension)
     
+    def compute_center_of_mass(self):
+        return np.average(self.data, axis=0)
+    
+    def compare_using_voxels(self, target, voxel_size):
+        sample_a = self.data - self.compute_center_of_mass()
+        sample_b = target.data - target.compute_center_of_mass()
+        min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
+        min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
+        min_z = min(np.min(sample_a[:, 2]),np.min(sample_b[:, 2]))
+        max_x = max(np.max(sample_a[:, 0]),np.max(sample_b[:, 0]))
+        max_y = max(np.max(sample_a[:, 1]),np.max(sample_b[:, 1]))
+        max_z = max(np.max(sample_a[:, 2]),np.max(sample_b[:, 2]))
+        boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
+        vox_b = SelmaPoinCloud(sample_b).voxelize(voxel_size, boundaries=boundaries)
+        vox_a = SelmaPoinCloud(sample_a).voxelize(voxel_size, boundaries=boundaries)
+        return vox_a.compute_correlation(vox_b)
+
+
+
+
