@@ -20,3 +20,7 @@ def comupte_cross_correlation(a, b):
     fab = np.real(ifftn(fa * np.conj(fb)))
 
     return fab
+
+def compute_mse(a, b):
+    print(a)
+    print(b)

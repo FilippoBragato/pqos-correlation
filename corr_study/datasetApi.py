@@ -4,7 +4,7 @@ from plyfile import PlyData
 import numpy as np
 import h5py
 from .selmaImage import SelmaImage
-from .selmaPointCloud import SelmaPoinCloud
+from .selmaPointCloud import SelmaPointCloud
 
 class Town(Enum):
     """Town available in the dataset
@@ -166,7 +166,7 @@ class Dataset:
             time_group_key = list(f[main_group_key].keys())
             for k in time_group_key:
                 if sensor.getType() == "PointCloud":
-                    out.append(SelmaPoinCloud(f[main_group_key][k][()]), time_step=int(k))
+                    out.append(SelmaPointCloud(f[main_group_key][k][()]), time_step=int(k))
                 elif sensor.getType() == "Image":
                     out.append(SelmaImage(f[main_group_key][k][()]), time_step=int(k))
         return out
@@ -189,7 +189,7 @@ class Dataset:
             time_group_key = str(time_step).zfill(5)
             if sensor.getType() == "PointCloud":
                 array_data = f[main_group_key][time_group_key][()]
-                out = SelmaPoinCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,4].astype(int), time_step=time_step)
+                out = SelmaPointCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,4].astype(int), time_step=time_step)
             elif sensor.getType() == "Image":
                 out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
         return out
@@ -269,7 +269,7 @@ class Dataset:
             points = [data['vertex'][axis] for axis in ['x', 'y', 'z']]
             points = np.array(points).T
             objTag = data['vertex']['ObjTag']
-            out = SelmaPoinCloud(points, objTag)
+            out = SelmaPointCloud(points, objTag)
         elif (sensor.getEstention() == ".jpg"):
             raise ValueError("Implementami")
         else:

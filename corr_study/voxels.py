@@ -11,7 +11,7 @@ class Voxels:
 
     def to_PointCloud(self):
         points = np.array(np.where(self.data)).T*self.voxel_size + self.boundaries[:,0]
-        return selmaPointCloud.SelmaPoinCloud(points)
+        return selmaPointCloud.SelmaPointCloud(points)
     
     def visualize(self):
         self.to_PointCloud().visualize()

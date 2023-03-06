@@ -2,9 +2,12 @@ import open3d as o3d
 import seaborn as sns
 import numpy as np
 from . import voxels
+from . import correlation
 import sparse
+from sklearn.cluster import KMeans
+from sklearn.metrics import mean_squared_error
 
-class SelmaPoinCloud:
+class SelmaPointCloud:
     def __init__(self, data:np.ndarray, ground_truth:np.ndarray=None, time_step:int=-1) -> None:
         self.data = data
         self.ground_truth = ground_truth
@@ -104,10 +107,15 @@ class SelmaPoinCloud:
         max_y = max(np.max(sample_a[:, 1]),np.max(sample_b[:, 1]))
         max_z = max(np.max(sample_a[:, 2]),np.max(sample_b[:, 2]))
         boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
-        vox_b = SelmaPoinCloud(sample_b).voxelize(voxel_size, boundaries=boundaries)
-        vox_a = SelmaPoinCloud(sample_a).voxelize(voxel_size, boundaries=boundaries)
+        vox_b = SelmaPointCloud(sample_b).voxelize(voxel_size, boundaries=boundaries)
+        vox_a = SelmaPointCloud(sample_a).voxelize(voxel_size, boundaries=boundaries)
         return vox_a.compute_correlation(vox_b)
 
-
-
-
+    def compare_using_clusters(self, target, number_of_clusters, weighted=False):
+        sample_a = self.data - self.compute_center_of_mass(weighted=weighted)
+        sample_b = target.data - target.compute_center_of_mass(weighted=weighted)
+        kmeans_a = KMeans(n_clusters=number_of_clusters, n_init='auto')
+        kmeans_a.fit(sample_a)
+        kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_a.cluster_centers_, n_init=1)
+        kmeans_b.fit(sample_b)
+        return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
