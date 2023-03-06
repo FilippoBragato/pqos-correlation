@@ -20,7 +20,7 @@ class Voxels:
         return correlation.comupte_correlation(self.data, target.data)
     
     def compute_correlation_inferring_offset(self, target):
-        cc = correlation.comupte_cross_correlation(self.data,target.data)
+        cc = correlation.comupte_cross_correlation(self.data.todense(),target.data.todense())
         mm = np.where(cc == np.max(cc))
         shifting_target = np.roll(target.data, mm[0][0]-target.data.shape[0], axis=0)
         shifting_target = np.roll(shifting_target, mm[1][0]-target.data.shape[1], axis=1)

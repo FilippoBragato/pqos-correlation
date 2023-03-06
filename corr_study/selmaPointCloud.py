@@ -53,12 +53,21 @@ class SelmaPoinCloud:
                         int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
                         int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension)))
 
-        print(np.where(coordinates < 0)[1])
+        # print(np.where(coordinates < 0)[1])
         coordinates = coordinates[:, np.all(coordinates >= 0, axis=0)]
-        print(coordinates)
-        print(np.where(coordinates > shape[0])[1])
-        print(np.where(coordinates > shape[1])[1])
-        print(np.where(coordinates > shape[2])[1])
+        # print(coordinates)
+        a = np.where(coordinates >= shape[0])
+        b = np.where(coordinates >= shape[1])
+        c = np.where(coordinates >= shape[2])
+
+        a = a[1][a[0] == 0]
+        b = b[1][b[0] == 1]
+        c = c[1][c[0] == 2]
+
+        to_delete = np.concatenate((a,b,c))
+        to_delete = np.unique(to_delete)
+        
+        coordinates = np.delete(coordinates, to_delete, axis=1)
 
         vox = sparse.COO(coordinates, 1, shape=shape)
 
@@ -79,12 +88,15 @@ class SelmaPoinCloud:
             
         return voxels.Voxels(vox, boundaries, voxel_dimension)
     
-    def compute_center_of_mass(self):
-        return np.average(self.data, axis=0)
+    def compute_center_of_mass(self, weighted=False):
+        weights = None
+        if weighted:
+            weights = np.sqrt(self.data[:,0]**2 + self.data[:,1]**2 + self.data[:,2]**2)
+        return np.average(self.data, weights=weights, axis=0)
     
-    def compare_using_voxels(self, target, voxel_size):
-        sample_a = self.data - self.compute_center_of_mass()
-        sample_b = target.data - target.compute_center_of_mass()
+    def compare_using_voxels(self, target, voxel_size, weighted=False):
+        sample_a = self.data - self.compute_center_of_mass(weighted=weighted)
+        sample_b = target.data - target.compute_center_of_mass(weighted=weighted)
         min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
         min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
         min_z = min(np.min(sample_a[:, 2]),np.min(sample_b[:, 2]))
