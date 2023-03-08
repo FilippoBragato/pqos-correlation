@@ -15,6 +15,7 @@ class SelmaPointCloud:
 
     def __str__(self) -> str:
         return str(self.data)
+
     
     def visualize(self) -> None:
         pcd = o3d.geometry.PointCloud()
@@ -22,7 +23,7 @@ class SelmaPointCloud:
 
         if self.ground_truth is not None:
             palette = sns.color_palette("hsv", n_colors=36)
-            get_color = lambda tag:palette[tag%36]
+            get_color = lambda tag:palette[tag%36] if tag != -1 else (1.0,1.0,1.0)
             colors = np.array(np.vectorize(get_color)(self.ground_truth)).T
 
             pcd.colors = o3d.utility.Vector3dVector(colors)
