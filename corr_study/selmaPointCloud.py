@@ -6,6 +6,7 @@ from . import correlation
 import sparse
 from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
+from tqdm import trange
 
 class SelmaPointCloud:
     def __init__(self, data:np.ndarray, ground_truth:np.ndarray=None, time_step:int=-1) -> None:
@@ -57,9 +58,8 @@ class SelmaPointCloud:
                         int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
                         int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension)))
 
-        # print(np.where(coordinates < 0)[1])
         coordinates = coordinates[:, np.all(coordinates >= 0, axis=0)]
-        # print(coordinates)
+        
         a = np.where(coordinates >= shape[0])
         b = np.where(coordinates >= shape[1])
         c = np.where(coordinates >= shape[2])
@@ -74,21 +74,6 @@ class SelmaPointCloud:
         coordinates = np.delete(coordinates, to_delete, axis=1)
 
         vox = sparse.COO(coordinates, 1, shape=shape)
-
-        # Create the matrix for the voxelization
-        # vox = np.zeros((int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_dimension)), 
-        #                 int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_dimension)), 
-        #                 int(np.ceil((boundaries[2][1]-boundaries[2][0])/voxel_dimension))), dtype=np.float64)
-        
-        # for point in self.data:
-        #     x = int(np.floor((point[0]-boundaries[0,0])/voxel_dimension))
-        #     y = int(np.floor((point[1]-boundaries[1,0])/voxel_dimension))
-        #     z = int(np.floor((point[2]-boundaries[2,0])/voxel_dimension))
-        #     if x < vox.shape[0] and y < vox.shape[1] and z < vox.shape[2]:
-        #         if cumulative:
-        #             vox[x, y, z] += 1
-        #         else: 
-        #             vox[x, y, z] = 1
             
         return voxels.Voxels(vox, boundaries, voxel_dimension)
     
@@ -120,3 +105,112 @@ class SelmaPointCloud:
         kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_a.cluster_centers_, n_init=1)
         kmeans_b.fit(sample_b)
         return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
+    
+    def compare_using_dbscan(self, target, eps, min_samples):
+        
+        def compute_oddly_normalized_distance_unilateral(x, y):
+            return np.sqrt(np.sum((x - y)**2, axis=1) / np.sqrt(np.sum(x**2, axis=1) * np.sum(y**2)))
+        
+        def my_dbscan(data, eps, min_samples):
+            neighs = [None, ] * data.shape[0]
+
+            def compute_neighbours(data, point_idx, eps):
+                if neighs[point_idx] is None:
+                    neighs[point_idx] = np.where(compute_oddly_normalized_distance_unilateral(data, data[point_idx,:]) < eps)[0]
+                return neighs[point_idx]
+            
+            def expand_cluster(data, labels, point_idx, cluster_id, eps, min_samples):
+                seeds_idxs = compute_neighbours(data, point_idx, eps)
+                if len(seeds_idxs) < min_samples:
+                    labels[point_idx] = -1
+                    return False
+                else:
+                    labels[seeds_idxs] = cluster_id
+                    seeds_idxs = np.delete(seeds_idxs, np.where(seeds_idxs == point_idx))
+                    while len(seeds_idxs) != 0:
+                        current_idx = seeds_idxs[0]
+                        results_idxs = compute_neighbours(data, current_idx, eps)
+                        if len(results_idxs) >= min_samples:
+                            for index in results_idxs:
+                                if labels[index] < 0:
+                                    if labels[index] == -2:
+                                        seeds_idxs = np.append(seeds_idxs, index)
+                                    labels[index] = cluster_id
+                        seeds_idxs = np.delete(seeds_idxs, np.where(seeds_idxs == current_idx))
+                    return True
+
+
+            cluster_id = 0
+            labels = np.zeros(data.shape[0]) - 2
+            for i in trange(data.shape[0]):
+                if labels[i] == -2:
+                    if expand_cluster(data, labels, i, cluster_id, eps, min_samples):
+                        cluster_id += 1
+            return labels.astype(int) 
+
+        def dbcompare(labels_first, first_pointcloud, second_pointcloud, eps, min_samples):
+            neighs = [None, ] * second_pointcloud.shape[0]
+
+            def compute_neighbours(data, point_idx, eps):
+                if neighs[point_idx] is None:
+                    neighs[point_idx] = np.where(compute_oddly_normalized_distance_unilateral(data, data[point_idx,:]) < eps)[0]
+                return neighs[point_idx]
+            
+            def expand_cluster(data, labels, point_idx, cluster_id, eps, min_samples):
+                seeds_idxs = compute_neighbours(data, point_idx, eps)
+                if len(seeds_idxs) < min_samples:
+                    labels[point_idx] = -1
+                    return False
+                else:
+                    labels[seeds_idxs] = cluster_id
+                    seeds_idxs = np.delete(seeds_idxs, np.where(seeds_idxs == point_idx))
+                    while len(seeds_idxs) != 0:
+                        current_idx = seeds_idxs[0]
+                        results_idxs = compute_neighbours(data, current_idx, eps)
+                        if len(results_idxs) >= min_samples:
+                            for index in results_idxs:
+                                if labels[index] < 0:
+                                    if labels[index] == -2:
+                                        seeds_idxs = np.append(seeds_idxs, index)
+                                    labels[index] = cluster_id
+                        seeds_idxs = np.delete(seeds_idxs, np.where(seeds_idxs == current_idx))
+                    return True
+                
+            labels_second = np.zeros(second_pointcloud.shape[0]) - 1
+                
+            for i in trange(len(np.unique(labels_first))-1):
+                _, c = np.unique(labels_first, return_counts=True)
+                centroid_first = first_pointcloud[labels_first == i].mean(axis=0)
+                closest_point = np.argsort(np.sum((second_pointcloud - centroid_first)**2, axis=1))
+                for index_closest in closest_point[:int(c[i + 1]/2)]:
+                    if labels_second[index_closest] == -1:
+                        expand_cluster(second_pointcloud, labels_second, index_closest, i, eps, min_samples)
+            # for i in trange(len(np.unique(labels_first))-1):
+            #     _, c = np.unique(labels_first, return_counts=True)
+            #     for _ in range(int(c[i + 1]/50)):
+            #         ww = np.where(labels_first == i)[0]
+            #         if len(ww)!= 0:
+            #             index_closest = np.random.choice(ww)
+            #             if labels_second[index_closest] == -1:
+            #                 expand_cluster(second_pointcloud, labels_second, index_closest, i, eps, min_samples)
+            return labels_second
+        
+        def compute_db_mse(data_first, data_second, labels_first, labels_second):
+            mse = 0
+            for i in range(len(np.unique(labels_first))-1):
+                centroid_first = data_first[labels_first == i].mean(axis=0)
+                centroid_second = data_second[labels_second == i].mean(axis=0)
+                if not np.isnan(centroid_second).any():
+                    mse += np.sum((centroid_first - centroid_second)**2)/np.sum((centroid_first)**2)
+            return mse
+        
+        mses = []
+        labels_original = my_dbscan(self.data, eps, min_samples)
+        labels_prev = labels_original
+        pc_prev = self.data
+        for pc_data in target:
+            actual_labels = dbcompare(labels_prev, pc_prev, pc_data, eps, min_samples)
+            mses.append(compute_db_mse(self.data, pc_data, labels_original, actual_labels))
+            labels_prev = actual_labels
+            pc_prev = pc_data
+        return mses
