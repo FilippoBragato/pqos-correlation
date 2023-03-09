@@ -8,6 +8,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
 from tqdm import trange
 
+NOTHING = -1
+CENTER_OF_MASS = 0
+ICP_REGISTRATION = 1
+
 class SelmaPointCloud:
     def __init__(self, data:np.ndarray, ground_truth:np.ndarray=None, time_step:int=-1) -> None:
         self.data = data
@@ -83,9 +87,18 @@ class SelmaPointCloud:
             weights = np.sqrt(self.data[:,0]**2 + self.data[:,1]**2 + self.data[:,2]**2)
         return np.average(self.data, weights=weights, axis=0)
     
-    def compare_using_voxels(self, target, voxel_size, weighted=False):
-        sample_a = self.data - self.compute_center_of_mass(weighted=weighted)
-        sample_b = target.data - target.compute_center_of_mass(weighted=weighted)
+    def compare_using_voxels(self, target, voxel_size, weighted=False, mode=CENTER_OF_MASS, crop_street=False):
+        sample_a = self.data
+        sample_b = target.data
+        if crop_street:
+            sample_a = sample_a[sample_a[:,3]>0.9]
+            sample_b = sample_b[sample_b[:,3]>0.9]
+        if mode == CENTER_OF_MASS:
+            sample_a = sample_a - self.compute_center_of_mass(weighted=weighted) # TODO remove the street also in this case
+            sample_b = sample_b - target.compute_center_of_mass(weighted=weighted)
+        elif mode == ICP_REGISTRATION:
+            pass
+
         min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
         min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
         min_z = min(np.min(sample_a[:, 2]),np.min(sample_b[:, 2]))
