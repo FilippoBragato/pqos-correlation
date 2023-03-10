@@ -7,6 +7,7 @@ import sparse
 from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
 from tqdm import trange
+import copy
 
 NOTHING = -1
 CENTER_OF_MASS = 0
@@ -87,17 +88,53 @@ class SelmaPointCloud:
             weights = np.sqrt(self.data[:,0]**2 + self.data[:,1]**2 + self.data[:,2]**2)
         return np.average(self.data, weights=weights, axis=0)
     
-    def compare_using_voxels(self, target, voxel_size, weighted=False, mode=CENTER_OF_MASS, crop_street=False):
+
+
+    def icp_register(self, a:np.ndarray, b:np.ndarray, ignore_center=True, init=None, visualize=False):
+        def draw_registration_result(source, target, transformation):
+            source_temp = copy.deepcopy(source)
+            target_temp = copy.deepcopy(target)
+            source_temp.paint_uniform_color([1, 0.706, 0])
+            target_temp.paint_uniform_color([0, 0.651, 0.929])
+            source_temp.transform(transformation)
+            o3d.visualization.draw_geometries([source_temp, target_temp])
+
+        if ignore_center:
+            data_a = a[np.sum(a**2, axis=1) > 40]
+            data_b = b[np.sum(b**2, axis=1) > 40]
+        else:
+            data_a = a
+            data_b = b
+        
+        pc_a = o3d.geometry.PointCloud()
+        pc_a.points = o3d.utility.Vector3dVector(data_a.data)
+        pc_b = o3d.geometry.PointCloud()
+        pc_b.points = o3d.utility.Vector3dVector(data_b.data)
+        if init is None:
+            results = o3d.pipelines.registration.registration_icp(pc_a, pc_b, 1000, 
+                                                                  criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=3000))
+        else:
+            results = o3d.pipelines.registration.registration_icp(pc_a, pc_b, 1000, init=init,
+                                                                  criteria=o3d.pipelines.registration.ICPConvergenceCriteria(max_iteration=3000))
+        if visualize:
+            draw_registration_result(pc_a, pc_b, results.transformation)
+        return results.transformation
+
+    def compare_using_voxels(self, target, voxel_size, weighted=False, mode=CENTER_OF_MASS, crop_street=False, init_transform=None):
         sample_a = self.data
         sample_b = target.data
         if crop_street:
-            sample_a = sample_a[sample_a[:,3]>0.9]
-            sample_b = sample_b[sample_b[:,3]>0.9]
+            sample_a = sample_a[sample_a[:,2]>-0.9]
+            sample_b = sample_b[sample_b[:,2]>-0.9]
         if mode == CENTER_OF_MASS:
             sample_a = sample_a - self.compute_center_of_mass(weighted=weighted) # TODO remove the street also in this case
             sample_b = sample_b - target.compute_center_of_mass(weighted=weighted)
         elif mode == ICP_REGISTRATION:
-            pass
+            transformation = self.icp_register(sample_a, sample_b, init=init_transform)
+            pc_a = o3d.geometry.PointCloud()
+            pc_a.points = o3d.utility.Vector3dVector(sample_a)
+            pc_a.transform(transformation)
+            sample_a = np.asarray(pc_a.points)
 
         min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
         min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
@@ -108,16 +145,38 @@ class SelmaPointCloud:
         boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
         vox_b = SelmaPointCloud(sample_b).voxelize(voxel_size, boundaries=boundaries)
         vox_a = SelmaPointCloud(sample_a).voxelize(voxel_size, boundaries=boundaries)
+        if mode == ICP_REGISTRATION:
+            return vox_a.compute_correlation(vox_b), transformation
         return vox_a.compute_correlation(vox_b)
 
-    def compare_using_clusters(self, target, number_of_clusters, weighted=False):
-        sample_a = self.data - self.compute_center_of_mass(weighted=weighted)
-        sample_b = target.data - target.compute_center_of_mass(weighted=weighted)
+    def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=CENTER_OF_MASS, crop_street=False, init_transform=None, visualize=False, return_mse=False):
+        sample_a = self.data
+        sample_b = target.data
+        if crop_street:
+            sample_a = sample_a[sample_a[:,2]>-0.9]
+            sample_b = sample_b[sample_b[:,2]>-0.9]
+        if mode == CENTER_OF_MASS:
+            sample_a = sample_a- self.compute_center_of_mass(weighted=weighted)
+            sample_b = sample_b - target.compute_center_of_mass(weighted=weighted)
+        elif mode == ICP_REGISTRATION:
+            transformation = self.icp_register(sample_a, sample_b, init=init_transform, visualize=visualize)
+            pc_a = o3d.geometry.PointCloud()
+            pc_a.points = o3d.utility.Vector3dVector(sample_a)
+            pc_a.transform(transformation)
+            sample_a = np.asarray(pc_a.points)
         kmeans_a = KMeans(n_clusters=number_of_clusters, n_init='auto')
         kmeans_a.fit(sample_a)
         kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_a.cluster_centers_, n_init=1)
         kmeans_b.fit(sample_b)
-        return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
+        if return_mse:
+            if mode == ICP_REGISTRATION:
+                return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_), transformation
+            else:
+                return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
+
+        if mode == ICP_REGISTRATION:
+            return correlation.comupte_correlation(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_), transformation
+        return correlation.comupte_correlation(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
     
     def compare_using_dbscan(self, target, eps, min_samples):
         
