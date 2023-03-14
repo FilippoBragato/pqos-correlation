@@ -27,29 +27,52 @@ def create_homogeneous_matrix(x, y, z, pitch, yaw, roll):
     return T
 
 def find_truth(path_to_bbox, starting_index, number_of_samples, dataset, id, weather, time, sensor):
+    VOXEL_SIZE = 1
+
+    diffs = []
     with h5py.File(path_to_bbox,'r') as f:
         root_grp = f.get("BBOX")
         ids = list(root_grp.keys())
-        ego = root_grp.get("0194")
+        for id_actor in ids:
+            agent = root_grp.get(id_actor)
+            if "vehicle" in agent.attrs['type']:
+                ego = root_grp.get(id_actor)
+                break
         loc = np.array(ego.get('location'))
         rot = np.array(ego.get('rotation'))
 
     first_pointcloud = dataset.open_measurement_sample_TLC(id, weather, time, sensor, starting_index)
-    print(first_pointcloud.data.shape)
+    first_environment = None
+    first_tags = None
     first = True
     for i in range(starting_index, starting_index+number_of_samples):
+        actual_diff = {"new" : 0}
         m = create_homogeneous_matrix(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,2], 180-rot[i-1,1])
         lt = dataset.open_measurement_sample_TLC(id, weather, time, sensor, i)
         pc = o3d.geometry.PointCloud()
         pc.points = o3d.utility.Vector3dVector(lt.data)
         pc.transform(m)
-        if first:
-            first = False
-            first_pointcloud.data = np.asarray(pc.points)
         tags = np.unique(lt.ground_truth[:,1])
+        if first:
+            first_pointcloud.data = np.asarray(pc.points)
+            first_tags = tags
         for tag in tags:
             temp_points = np.asarray(pc.points)
             temp_points = temp_points[lt.ground_truth[:,1] == tag]
-            print(first_pointcloud.data.shape)
-            print(first_pointcloud.ground_truth.shape)
-            print(tag, np.mean(first_pointcloud.data[first_pointcloud.ground_truth[:,1] == tag], axis=0) - np.mean(temp_points,axis=0))
+            if tag == 0:
+                if first:
+                    first = False
+                    first_environment = selmaPointCloud.SelmaPointCloud(temp_points)
+                    actual_diff["background"] = 0
+                else:
+                    actual_environment = selmaPointCloud.SelmaPointCloud(temp_points)
+                    actual_diff["background"] = first_environment.intersection_using_voxels(actual_environment, VOXEL_SIZE, crop_street=True)
+            else:
+                if tag in first_tags:
+                    actual_diff[tag] = np.sqrt(np.sum((np.mean(first_pointcloud.data[first_pointcloud.ground_truth[:,1] == tag], axis=0) - np.mean(temp_points,axis=0))**2))
+                else:
+                    actual_diff["new"] += 1
+        for t in set(first_tags) - set(tags):
+            actual_diff[t] = 0
+        diffs.append(actual_diff)
+    return diffs

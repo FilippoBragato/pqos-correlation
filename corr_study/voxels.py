@@ -30,6 +30,13 @@ class Voxels:
         z = _get_common_index(target.data.shape[2], mm[2][0])
         return correlation.comupte_correlation(self.data[:x,:y,:z], shifting_target[:x,:y,:z])
     
+    def compute_intersection_size(self, target):
+        intersection = target.data - self.data
+        intersection = intersection.todense()
+        intersection[intersection < 0] = 0
+        # Voxels(intersection, self.boundaries, self.voxel_size).visualize()
+        return np.sum(intersection)/np.sum(target.data)
+    
 def _get_common_index(shape, index):
     if index > shape/2:
         return index

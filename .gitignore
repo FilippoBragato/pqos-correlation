@@ -130,3 +130,4 @@ dmypy.json
 
 # data
 corr_study/dataset
+corr_study/lidar-bonnetal

@@ -170,7 +170,24 @@ class Dataset:
                 elif sensor.getType() == "Image":
                     out.append(SelmaImage(f[main_group_key][k][()]), time_step=int(k))
         return out
-    
+    def get_measurement_series_length_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor):
+        """Open the archive of the desired simulation and returns a list containing temporal ordered data
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+
+        Returns:
+            list(Obj): list of required data
+        """
+        return 5
+        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+            main_group_key = list(f.keys())[0]
+            time_group_key = list(f[main_group_key].keys())
+            out = len(time_group_key)
+        return out
     def open_measurement_sample_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
         """Open the archive of the desired simulation and returns the required sample
 

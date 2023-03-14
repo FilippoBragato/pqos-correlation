@@ -30,7 +30,7 @@ class SelmaPointCloud:
         if self.ground_truth is not None:
             palette = sns.color_palette("hsv", n_colors=36)
             get_color = lambda tag:palette[tag%36] if tag != -1 else (1.0,1.0,1.0)
-            colors = np.array(np.vectorize(get_color)(self.ground_truth)).T
+            colors = np.array(np.vectorize(get_color)(self.ground_truth[:,0])).T
 
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
@@ -148,6 +148,29 @@ class SelmaPointCloud:
         if mode == ICP_REGISTRATION:
             return vox_a.compute_correlation(vox_b), transformation
         return vox_a.compute_correlation(vox_b)
+    
+    def intersection_using_voxels(self, target, voxel_size, crop_street=False):
+
+        sample_a = self.data
+        sample_b = target.data
+        
+        if crop_street:
+            sample_a = sample_a[sample_a[:,2]>-0.9]
+            sample_b = sample_b[sample_b[:,2]>-0.9]
+
+        min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
+        min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
+        min_z = min(np.min(sample_a[:, 2]),np.min(sample_b[:, 2]))
+        max_x = max(np.max(sample_a[:, 0]),np.max(sample_b[:, 0]))
+        max_y = max(np.max(sample_a[:, 1]),np.max(sample_b[:, 1]))
+        max_z = max(np.max(sample_a[:, 2]),np.max(sample_b[:, 2]))
+
+        boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
+
+        vox_b = SelmaPointCloud(sample_b).voxelize(voxel_size, boundaries=boundaries)
+        vox_a = SelmaPointCloud(sample_a).voxelize(voxel_size, boundaries=boundaries)
+
+        return vox_a.compute_intersection_size(vox_b)
 
     def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=CENTER_OF_MASS, crop_street=False, init_transform=None, visualize=False, return_mse=False):
         sample_a = self.data
