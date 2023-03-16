@@ -182,7 +182,6 @@ class Dataset:
         Returns:
             list(Obj): list of required data
         """
-        return 5
         with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = list(f[main_group_key].keys())

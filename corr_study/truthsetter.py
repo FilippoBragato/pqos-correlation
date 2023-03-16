@@ -40,10 +40,10 @@ def find_truth(path_to_bbox, starting_index, number_of_samples, dataset, id, wea
                 break
         loc = np.array(ego.get('location'))
         rot = np.array(ego.get('rotation'))
-
     first_pointcloud = dataset.open_measurement_sample_TLC(id, weather, time, sensor, starting_index)
     first_environment = None
     first_tags = None
+    first_mobile =  None
     first = True
     for i in range(starting_index, starting_index+number_of_samples):
         actual_diff = {"new" : 0}
@@ -56,9 +56,15 @@ def find_truth(path_to_bbox, starting_index, number_of_samples, dataset, id, wea
         if first:
             first_pointcloud.data = np.asarray(pc.points)
             first_tags = tags
+            first_mobile = selmaPointCloud.SelmaPointCloud(first_pointcloud.data[first_pointcloud.ground_truth[:,1] !=0,:])
+
+        actual_mobile = selmaPointCloud.SelmaPointCloud(np.asarray(pc.points)[lt.ground_truth[:,1] !=0,:])
+        actual_diff["mobile"] = first_mobile.intersection_using_voxels(actual_mobile, VOXEL_SIZE, crop_street=True)
+
         for tag in tags:
             temp_points = np.asarray(pc.points)
             temp_points = temp_points[lt.ground_truth[:,1] == tag]
+
             if tag == 0:
                 if first:
                     first = False

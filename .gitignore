@@ -1,3 +1,6 @@
+# VSCode
+.vscode
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -131,3 +134,6 @@ dmypy.json
 # data
 corr_study/dataset
 corr_study/lidar-bonnetal
+
+# tfstuff
+caches

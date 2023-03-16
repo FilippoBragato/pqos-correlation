@@ -8,6 +8,8 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import mean_squared_error
 from tqdm import trange
 import copy
+from scipy.ndimage import label, generate_binary_structure
+from scipy.spatial.distance import cdist
 
 NOTHING = -1
 CENTER_OF_MASS = 0
@@ -23,15 +25,20 @@ class SelmaPointCloud:
         return str(self.data)
 
     
-    def visualize(self) -> None:
+    def visualize(self, inferred=False) -> None:
         pcd = o3d.geometry.PointCloud()
         pcd.points = o3d.utility.Vector3dVector(self.data)
 
-        if self.ground_truth is not None:
+        if not inferred and self.ground_truth is not None:
             palette = sns.color_palette("hsv", n_colors=36)
             get_color = lambda tag:palette[tag%36] if tag != -1 else (1.0,1.0,1.0)
             colors = np.array(np.vectorize(get_color)(self.ground_truth[:,0])).T
+            pcd.colors = o3d.utility.Vector3dVector(colors)
 
+        if inferred and hasattr(self, 'isMobile'):
+            palette = sns.color_palette("hsv", n_colors=150)
+            get_color = lambda tag:palette[tag%150] if tag != 0 else (1.0,1.0,1.0)
+            colors = np.array(np.vectorize(get_color)(self.isMobile)).T
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
         vis = o3d.visualization.Visualizer()
@@ -87,15 +94,13 @@ class SelmaPointCloud:
         if weighted:
             weights = np.sqrt(self.data[:,0]**2 + self.data[:,1]**2 + self.data[:,2]**2)
         return np.average(self.data, weights=weights, axis=0)
-    
-
 
     def icp_register(self, a:np.ndarray, b:np.ndarray, ignore_center=True, init=None, visualize=False):
         def draw_registration_result(source, target, transformation):
             source_temp = copy.deepcopy(source)
             target_temp = copy.deepcopy(target)
-            source_temp.paint_uniform_color([1, 0.706, 0])
-            target_temp.paint_uniform_color([0, 0.651, 0.929])
+            source_temp.paint_uniform_color([1, 0, 0])
+            target_temp.paint_uniform_color([0, 0, 1])
             source_temp.transform(transformation)
             o3d.visualization.draw_geometries([source_temp, target_temp])
 
@@ -309,3 +314,136 @@ class SelmaPointCloud:
             labels_prev = actual_labels
             pc_prev = pc_data
         return mses
+
+    def classify_mobile(self, classifier, threshold=.5):
+        points = self.data[self.data[:,2]>-0.9]
+        img = np.zeros((1,1024,1024,2))
+        img[0,:,:,1] = np.zeros((1024,1024)) - 0.9
+        for point in points:
+            x_img = int(point[0]/0.16 + 512)
+            y_img = int(point[1]/0.16 + 512)
+            if x_img>=0 and x_img<1024 and y_img>=0 and y_img<1024:
+                img[0, x_img, y_img, 0] += 1
+                img[0, x_img, y_img, 1] += point[2]
+        mask = img[0,:,:,0] > 0
+        img[0,mask,1] = img[0,mask,1] / img[0,mask,0]
+        img[0,:,:,1] = (img[0,:,:,1] + 1)/(10 + 1) 
+        mask = img[0,:,:,0] < 10
+        img[0,mask, 0] /= 10
+        img[0,~mask, 0] = 1
+        pred = classifier.predict(img, verbose=0) > threshold
+        pred = pred[0,:,:,0]
+        structure = generate_binary_structure(2,2)
+        pred, num_labels = label(pred, structure)
+        self.isMobile = np.zeros((self.data.shape[0]), dtype=int)
+        for i, point in enumerate(self.data):
+            x_img = int(point[0]/0.16 + 512)
+            y_img = int(point[1]/0.16 + 512)
+            if x_img>=0 and x_img<1024 and y_img>=0 and y_img<1024:
+                self.isMobile[i] = pred[x_img, y_img]
+
+
+    def _compute_cluster_centroids(self, visualize=False):
+        if hasattr(self, 'isMobile'):
+            cluster_ids = list(np.unique(self.isMobile))
+            cluster_ids.remove(0)
+            self.centroids = np.zeros((len(cluster_ids),3))
+            for c_index, c_id in enumerate(cluster_ids):
+                cluster_points = self.data[self.isMobile==c_id,:]
+                cluster_center = np.mean(cluster_points, axis=0)
+                self.centroids[c_index, :] = cluster_center
+            if visualize:
+                pcd = o3d.geometry.PointCloud()
+                pcd.points = o3d.utility.Vector3dVector(self.data)
+
+                palette = sns.color_palette("hsv", n_colors=150)
+                get_color = lambda tag:palette[tag%150] if tag != 0 else (1.0,1.0,1.0)
+                colors = np.array(np.vectorize(get_color)(self.isMobile)).T
+                pcd.colors = o3d.utility.Vector3dVector(colors)
+                
+                pcd_centroids = o3d.geometry.PointCloud()
+                pcd_centroids.points = o3d.utility.Vector3dVector(self.centroids)
+
+                pcd_centroids.paint_uniform_color([0, 0, 0])
+                o3d.visualization.draw_geometries([pcd, pcd_centroids])
+
+        else:
+            raise Exception("First classify the points")
+
+    def compare_using_classifier(self, target, classifier, threshold=.5, voxel_size=0.25, number_of_clusters=20, initial_transformation=None, initial_centroids=None):
+
+        if not hasattr(self, 'isMobile'):
+            self.classify_mobile(classifier, threshold=threshold)
+            if not hasattr(self, 'centroids'):
+                self._compute_cluster_centroids()
+        if not hasattr(target, 'isMobile'):
+            target.classify_mobile(classifier, threshold=threshold)
+            if not hasattr(target, 'centroids'):
+                target._compute_cluster_centroids()
+
+        background_a = self.data[self.isMobile == 0, :]
+        background_b = target.data[target.isMobile == 0, :]
+        background_a = background_a[background_a[:,2] > -0.9]
+        background_b = background_b[background_b[:,2] > -0.9]
+        transformation = self.icp_register(background_a, background_b, ignore_center=True, init=initial_transformation)
+        pc_a = o3d.geometry.PointCloud()
+        pc_a.points = o3d.utility.Vector3dVector(background_a)
+        pc_a.transform(transformation)
+        background_a = np.asarray(pc_a.points)
+        min_x = min(np.min(background_a[:, 0]),np.min(background_b[:, 0]))
+        min_y = min(np.min(background_a[:, 1]),np.min(background_b[:, 1]))
+        min_z = min(np.min(background_a[:, 2]),np.min(background_b[:, 2]))
+        max_x = max(np.max(background_a[:, 0]),np.max(background_b[:, 0]))
+        max_y = max(np.max(background_a[:, 1]),np.max(background_b[:, 1]))
+        max_z = max(np.max(background_a[:, 2]),np.max(background_b[:, 2]))
+        boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
+        vox_back_a = SelmaPointCloud(background_a).voxelize(voxel_size, boundaries=boundaries)
+        vox_back_b = SelmaPointCloud(background_b).voxelize(voxel_size, boundaries=boundaries)
+
+        if initial_centroids is None:
+            initial_centroids = self.centroids
+        pc_a = o3d.geometry.PointCloud()
+        pc_a.points = o3d.utility.Vector3dVector(self.centroids)
+        pc_a.transform(transformation)
+        original_centroids = np.asarray(pc_a.points)
+        distances = cdist(initial_centroids, target.centroids)
+        closest_indices = np.argmin(distances, axis=1)
+        new_cluster_positions = target.centroids[closest_indices, :]
+        # mobile_a = self.data[self.isMobile == 1, :]
+        # mobile_b = target.data[target.isMobile == 1, :]
+        # pc_a = o3d.geometry.PointCloud()
+        # pc_a.points = o3d.utility.Vector3dVector(mobile_a)
+        # pc_a.transform(transformation)
+        # mobile_a = np.asarray(pc_a.points)
+        # min_x = min(np.min(mobile_a[:, 0]),np.min(mobile_b[:, 0]))
+        # min_y = min(np.min(mobile_a[:, 1]),np.min(mobile_b[:, 1]))
+        # min_z = min(np.min(mobile_a[:, 2]),np.min(mobile_b[:, 2]))
+        # max_x = max(np.max(mobile_a[:, 0]),np.max(mobile_b[:, 0]))
+        # max_y = max(np.max(mobile_a[:, 1]),np.max(mobile_b[:, 1]))
+        # max_z = max(np.max(mobile_a[:, 2]),np.max(mobile_b[:, 2]))
+        # boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
+        # vox_mobile_a = SelmaPointCloud(mobile_a)
+        # vox_mobile_b = SelmaPointCloud(mobile_b)
+
+        return vox_back_a.compute_intersection_size(vox_back_b), np.sum(np.sqrt(np.sum((new_cluster_positions - original_centroids)**2, axis=1))) , transformation, new_cluster_positions
+
+    def pippo(self, target, classifier, threshold=.5, voxel_size=0.25, initial_transformation=None):
+
+        if not hasattr(self, 'isMobile'):
+            self.classify_mobile(classifier, threshold=threshold)
+        if not hasattr(target, 'isMobile'):
+            target.classify_mobile(classifier, threshold=threshold)
+
+        background_a = self.data[self.isMobile == 0, :]
+        background_b = target.data[target.isMobile == 0, :]
+        background_a = background_a[background_a[:,2] > -0.9]
+        background_b = background_b[background_b[:,2] > -0.9]
+        transformation = self.icp_register(background_a, background_b, ignore_center=True, init=initial_transformation)
+
+        mobile_a = self.data[self.isMobile == 1, :]
+        mobile_b = target.data[target.isMobile == 1, :]
+        pc_a = o3d.geometry.PointCloud()
+        pc_a.points = o3d.utility.Vector3dVector(mobile_a)
+        pc_a.transform(transformation)
+        mobile_a = np.asarray(pc_a.points)
+        return mobile_a, mobile_b
