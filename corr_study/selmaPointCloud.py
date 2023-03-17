@@ -5,11 +5,12 @@ from . import voxels
 from . import correlation
 import sparse
 from sklearn.cluster import KMeans
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import mean_squared_error, confusion_matrix
 from tqdm import trange
 import copy
 from scipy.ndimage import label, generate_binary_structure
 from scipy.spatial.distance import cdist
+
 
 NOTHING = -1
 CENTER_OF_MASS = 0
@@ -31,8 +32,8 @@ class SelmaPointCloud:
 
         if not inferred and self.ground_truth is not None:
             palette = sns.color_palette("hsv", n_colors=36)
-            get_color = lambda tag:palette[tag%36] if tag != -1 else (1.0,1.0,1.0)
-            colors = np.array(np.vectorize(get_color)(self.ground_truth[:,0])).T
+            get_color = lambda tag:palette[tag%36] if tag != 0 else (1.0,1.0,1.0)
+            colors = np.array(np.vectorize(get_color)(self.ground_truth[:,1])).T
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
         if inferred and hasattr(self, 'isMobile'):
@@ -342,7 +343,6 @@ class SelmaPointCloud:
             if x_img>=0 and x_img<1024 and y_img>=0 and y_img<1024:
                 self.isMobile[i] = pred[x_img, y_img]
 
-
     def _compute_cluster_centroids(self, visualize=False):
         if hasattr(self, 'isMobile'):
             cluster_ids = list(np.unique(self.isMobile))
@@ -370,15 +370,19 @@ class SelmaPointCloud:
         else:
             raise Exception("First classify the points")
 
-    def compare_using_classifier(self, target, classifier, threshold=.5, voxel_size=0.25, number_of_clusters=20, initial_transformation=None, initial_centroids=None):
+    def compare_using_classifier(self, target, classifier=None, threshold=.5, voxel_size=0.25, initial_transformation=None, initial_centroids=None):
 
         if not hasattr(self, 'isMobile'):
             self.classify_mobile(classifier, threshold=threshold)
+            print("qui")
             if not hasattr(self, 'centroids'):
+                print("quo")
                 self._compute_cluster_centroids()
         if not hasattr(target, 'isMobile'):
+            print("qua")
             target.classify_mobile(classifier, threshold=threshold)
             if not hasattr(target, 'centroids'):
+                print("qua")
                 target._compute_cluster_centroids()
 
         background_a = self.data[self.isMobile == 0, :]
@@ -427,23 +431,73 @@ class SelmaPointCloud:
 
         return vox_back_a.compute_intersection_size(vox_back_b), np.sum(np.sqrt(np.sum((new_cluster_positions - original_centroids)**2, axis=1))) , transformation, new_cluster_positions
 
-    def pippo(self, target, classifier, threshold=.5, voxel_size=0.25, initial_transformation=None):
+    def really_euristic_classifier(self, floor_level=-1.26, max_height=2.2, max_width=8, voxel_size=1.25, visualize=False, return_stats=False):
+        mask_above_ground = self.data[:,2] > floor_level
+        mask_too_high = self.data[:,2] > max_height + floor_level
+        human_level = self.data[np.logical_and(mask_above_ground, np.logical_not(mask_too_high)), :]
 
-        if not hasattr(self, 'isMobile'):
-            self.classify_mobile(classifier, threshold=threshold)
-        if not hasattr(target, 'isMobile'):
-            target.classify_mobile(classifier, threshold=threshold)
+        min_x = np.min(human_level[:, 0])
+        min_y = np.min(human_level[:, 1])
+        max_x = np.max(human_level[:, 0])
+        max_y = np.max(human_level[:, 1])
 
-        background_a = self.data[self.isMobile == 0, :]
-        background_b = target.data[target.isMobile == 0, :]
-        background_a = background_a[background_a[:,2] > -0.9]
-        background_b = background_b[background_b[:,2] > -0.9]
-        transformation = self.icp_register(background_a, background_b, ignore_center=True, init=initial_transformation)
+        boundaries = np.array([[min_x, max_x], [min_y, max_y]])
 
-        mobile_a = self.data[self.isMobile == 1, :]
-        mobile_b = target.data[target.isMobile == 1, :]
-        pc_a = o3d.geometry.PointCloud()
-        pc_a.points = o3d.utility.Vector3dVector(mobile_a)
-        pc_a.transform(transformation)
-        mobile_a = np.asarray(pc_a.points)
-        return mobile_a, mobile_b
+        above_ground = self.data[mask_above_ground, :]
+
+        x = np.floor((above_ground[:, 0] - boundaries[0,0]) / voxel_size).astype(int)
+        y = np.floor((above_ground[:, 1] - boundaries[1,0]) / voxel_size).astype(int)
+
+        shape = (int(np.ceil((boundaries[0][1]-boundaries[0][0])/voxel_size)), 
+                 int(np.ceil((boundaries[1][1]-boundaries[1][0])/voxel_size)))
+        
+        point_mask = (x < shape[0]) & (y < shape[1])
+
+        x = x[point_mask]
+        y = y[point_mask]
+
+        flatten = np.zeros(shape,dtype=int)
+        flatten[x, y] = 1
+        clusters , labels = label(flatten, generate_binary_structure(2, 2))
+
+        c_id = np.unique(clusters)
+        for id in zip(c_id):
+            ex, why = np.where(clusters == id)
+            if max(ex)-min(ex) > max_width or max(why)-min(why)> max_width:
+                clusters[clusters==id]=0
+
+
+        too_high = self.data[mask_too_high, :]
+
+        x = np.floor((too_high[:, 0] - boundaries[0,0]) / voxel_size).astype(int)
+        y = np.floor((too_high[:, 1] - boundaries[1,0]) / voxel_size).astype(int)
+
+        point_mask = (x < shape[0]) & (y < shape[1])
+
+        x = x[point_mask]
+        y = y[point_mask]
+
+
+        clusters[x,y] = 0
+        
+        all_x = np.floor((self.data[:, 0] - boundaries[0,0]) / voxel_size).astype(int)
+        all_y = np.floor((self.data[:, 1] - boundaries[1,0]) / voxel_size).astype(int)
+        self.isMobile = np.zeros((self.data.shape[0]), dtype=int)
+
+        for i, id in enumerate(np.unique(clusters)):
+            if id != 0:
+                cluster_x, cluster_y = np.where(clusters == id)
+                for x, y in zip(cluster_x, cluster_y):
+                    self.isMobile[(all_x == x) & (all_y==y) & (self.data[:,2] > floor_level)] = i
+
+        self._compute_cluster_centroids(visualize=visualize)
+        if return_stats:
+            true_mobile = (self.ground_truth[:,0] == 12) | (self.ground_truth[:,0] == 13) | (self.ground_truth[:,0] == 14)
+            inferred_mobile = self.isMobile != 0
+            return confusion_matrix(true_mobile, inferred_mobile)
+
+
+
+
+
+

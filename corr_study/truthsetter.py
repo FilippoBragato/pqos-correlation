@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import open3d as o3d
 from . import selmaPointCloud
+from tqdm import trange
 
 def create_homogeneous_matrix(x, y, z, pitch, yaw, roll):
     # Convert pitch, yaw, and roll angles to radians
@@ -45,7 +46,7 @@ def find_truth(path_to_bbox, starting_index, number_of_samples, dataset, id, wea
     first_tags = None
     first_mobile =  None
     first = True
-    for i in range(starting_index, starting_index+number_of_samples):
+    for i in trange(starting_index, starting_index+number_of_samples):
         actual_diff = {"new" : 0}
         m = create_homogeneous_matrix(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,2], 180-rot[i-1,1])
         lt = dataset.open_measurement_sample_TLC(id, weather, time, sensor, i)
