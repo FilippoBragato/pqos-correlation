@@ -16,6 +16,10 @@ NOTHING = -1
 CENTER_OF_MASS = 0
 ICP_REGISTRATION = 1
 
+NO = 0
+PRE_REGISTRATION = 1
+POST_REGISTRATION = 2
+
 class SelmaPointCloud:
     def __init__(self, data:np.ndarray, ground_truth:np.ndarray=None, time_step:int=-1) -> None:
         self.data = data
@@ -428,8 +432,14 @@ class SelmaPointCloud:
         # boundaries = np.array([[min_x, max_x], [min_y, max_y], [min_z, max_z]])
         # vox_mobile_a = SelmaPointCloud(mobile_a)
         # vox_mobile_b = SelmaPointCloud(mobile_b)
+        # normalized_distance_bw_clusters = np.sum(np.sqrt(np.sum((new_cluster_positions - original_centroids)**2, axis=1)))
+        dist_wrt_prev = np.sqrt(np.sum((new_cluster_positions - initial_centroids)**2, axis=1))
+        dist_wrt_original = np.sqrt(np.sum((new_cluster_positions - original_centroids)**2, axis=1))
+        new_cluster_positions[dist_wrt_prev>40/30] = initial_centroids[dist_wrt_prev>40/30]
+        
+        normalized_distance_bw_clusters = np.mean(dist_wrt_original[dist_wrt_prev<40/30])
 
-        return vox_back_a.compute_intersection_size(vox_back_b), np.sum(np.sqrt(np.sum((new_cluster_positions - original_centroids)**2, axis=1))) , transformation, new_cluster_positions
+        return vox_back_a.compute_intersection_size(vox_back_b), normalized_distance_bw_clusters, transformation, new_cluster_positions
 
     def really_euristic_classifier(self, floor_level=-1.26, max_height=2.2, max_width=8, voxel_size=1.25, visualize=False, return_stats=False):
         mask_above_ground = self.data[:,2] > floor_level
@@ -496,8 +506,36 @@ class SelmaPointCloud:
             inferred_mobile = self.isMobile != 0
             return confusion_matrix(true_mobile, inferred_mobile)
 
+    def _compute_chamfer_distance(self, source:o3d.geometry.PointCloud, target:o3d.geometry.PointCloud):
+        d1 = source.compute_point_cloud_distance(target)
+        d2 = target.compute_point_cloud_distance(source)
+        return np.sum(np.asarray(d1)**2) + np.sum(np.asarray(d2)**2)
 
+    def align_and_compute_cd(self, target, mode=NOTHING, floor_level=-1.26, init_transform=None, remove_far_points=POST_REGISTRATION, max_distance=50):
+        # Removing floor
+        sample_a = self.data[self.data[:,2] > floor_level]
+        sample_b = target.data[target.data[:,2] > floor_level]
 
-
-
-
+        if remove_far_points == PRE_REGISTRATION:
+            sample_a = sample_a[np.sum(sample_a[:,[0,1]]**2, axis=1) < max_distance**2]
+            sample_b = sample_b[np.sum(sample_b[:,[0,1]]**2, axis=1) < max_distance**2]
+        # Alignin or maybe not
+        if mode == ICP_REGISTRATION:
+            transformation = self.icp_register(sample_a, sample_b, init=init_transform)
+            if remove_far_points == POST_REGISTRATION:
+                sample_a = sample_a[np.sum(sample_a[:,[0,1]]**2, axis=1) < max_distance**2]
+                sample_b = sample_b[np.sum(sample_b[:,[0,1]]**2, axis=1) < max_distance**2]
+            pc_a = o3d.geometry.PointCloud()
+            pc_a.points = o3d.utility.Vector3dVector(sample_a)
+            pc_a.transform(transformation)
+            pc_b = o3d.geometry.PointCloud()
+            pc_b.points = o3d.utility.Vector3dVector(sample_b)
+        elif mode == NOTHING:
+            pc_a = o3d.geometry.PointCloud()
+            pc_a.points = o3d.utility.Vector3dVector(sample_a)
+            pc_b = o3d.geometry.PointCloud()
+            pc_b.points = o3d.utility.Vector3dVector(sample_b)
+        if mode == ICP_REGISTRATION:
+            return self._compute_chamfer_distance(pc_a, pc_b), transformation
+        else:
+            return self._compute_chamfer_distance(pc_a, pc_b)
