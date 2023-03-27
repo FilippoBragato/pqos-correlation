@@ -134,6 +134,11 @@ dmypy.json
 # data
 corr_study/dataset
 corr_study/lidar-bonnetal
+corr_study/sort
+corr_study/PointPillars
+corr_study/OpenPCDet
+corr_study/mmdetection3d
+output
 
 # tfstuff
 caches
