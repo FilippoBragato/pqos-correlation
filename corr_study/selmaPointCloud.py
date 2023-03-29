@@ -347,6 +347,12 @@ class SelmaPointCloud:
             if x_img>=0 and x_img<1024 and y_img>=0 and y_img<1024:
                 self.isMobile[i] = pred[x_img, y_img]
 
+    def apply_transformation(self, matrix):
+        pc = o3d.geometry.PointCloud()
+        pc.points = o3d.utility.Vector3dVector(self.data)
+        pc.transform(matrix)
+        self.data = np.asarray(pc.points)
+
     def _compute_cluster_centroids(self, visualize=False):
         if hasattr(self, 'isMobile'):
             cluster_ids = list(np.unique(self.isMobile))

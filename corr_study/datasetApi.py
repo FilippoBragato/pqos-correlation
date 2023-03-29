@@ -102,6 +102,16 @@ class Sensor(Enum):
             return "PointCloud"
         else:
             return "Image"
+        
+    def get_homogeneous_matrix(self):
+        if self.value == Sensor.LT.value:
+            return [[1, 0, 0, 0], [0, 1, 0, 0.65], [0, 0, 1, 1.7], [0, 0, 0, 1]]
+        elif self.value == Sensor.LFL.value:
+            return [[-1, 0, 0, -0.85], [0, -1, 0, -1.8], [0, 0, 1, 0.75], [0, 0, 0, 1]]
+        elif self.value == Sensor.LFR.value:
+            return [[1, 0, 0, 0.85], [0, 1, 0, -1.8], [0, 0, 1, 0.75], [0, 0, 0, 1]]
+        else:
+            raise NotImplementedError("Ehm...")
 
 
 class Dataset:
@@ -148,6 +158,12 @@ class Dataset:
                             sensor.value,
                             route+"-"+weather.value+time.value+"-"+sensor.value+".hdf5")
     
+    def get_path_bbox(self, route:str, weather:Weather, time:Time) -> str:
+        return os.path.join(self._get_path_archives_TLC(),
+                            route,
+                            weather.value+time.value,
+                            "BBOX.hdf5")
+    
     def open_measurement_series_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor):
         """Open the archive of the desired simulation and returns a list containing temporal ordered data
 
@@ -166,7 +182,7 @@ class Dataset:
             time_group_key = list(f[main_group_key].keys())
             for k in time_group_key:
                 if sensor.getType() == "PointCloud":
-                    out.append(SelmaPointCloud(f[main_group_key][k][()]), time_step=int(k))
+                    out.append(SelmaPointCloud(f[main_group_key][k][()], time_step=int(k)))
                 elif sensor.getType() == "Image":
                     out.append(SelmaImage(f[main_group_key][k][()]), time_step=int(k))
         return out
@@ -185,7 +201,7 @@ class Dataset:
         with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = list(f[main_group_key].keys())
-            out = len(time_group_key)
+            out = len(time_group_key) - 1
         return out
     def open_measurement_sample_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
         """Open the archive of the desired simulation and returns the required sample
@@ -208,6 +224,32 @@ class Dataset:
                 out = SelmaPointCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,[4,3]].astype(int), time_step=time_step)
             elif sensor.getType() == "Image":
                 out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
+        return out
+    
+    def open_measurement_samples_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_steps):
+        """Open the archive of the desired simulation and returns the required sample
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+            time_step (int): the time step that has to be extracted from the serie
+
+        Returns:
+            obj: the desired item
+        """
+        out = []
+        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+            main_group_key = list(f.keys())[0]
+            for time_step in time_steps:
+                time_group_key = str(time_step).zfill(5)
+                if sensor.getType() == "PointCloud":
+                    array_data = f[main_group_key][time_group_key][()]
+                    o = SelmaPointCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,[4,3]].astype(int), time_step=time_step)
+                elif sensor.getType() == "Image":
+                    o = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
+                out.append(o)
         return out
 
     def _get_path_folder_CV(self, town: Town, weather: Weather, time: Time, sensor: Sensor) -> str:

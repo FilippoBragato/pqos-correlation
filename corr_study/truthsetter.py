@@ -2,6 +2,7 @@ import h5py
 import numpy as np
 import open3d as o3d
 from . import selmaPointCloud
+from . import datasetApi
 from tqdm import trange
 import seaborn as sns
 
@@ -49,7 +50,8 @@ def find_truth(path_to_bbox, starting_index, number_of_samples, dataset, id, wea
     first = True
     for i in trange(starting_index, starting_index+number_of_samples):
         actual_diff = {"new" : 0}
-        m = create_homogeneous_matrix(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,2], 180-rot[i-1,1])
+        # m = create_homogeneous_matrix(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,2], 180-rot[i-1,1])
+        m = create_homogeneous_matrix(-loc[i-1,0], -loc[i-1,1], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,1], 180-rot[i-1,2])
         lt = dataset.open_measurement_sample_TLC(id, weather, time, sensor, i)
         pc = o3d.geometry.PointCloud()
         pc.points = o3d.utility.Vector3dVector(lt.data)
@@ -157,7 +159,7 @@ def find_truth_cd_matching_ball(path_to_bbox, starting_index, number_of_samples,
     first_pointcloud = dataset.open_measurement_sample_TLC(id, weather, time, sensor, starting_index)
     first_pc = o3d.geometry.PointCloud()
     dd = first_pointcloud.data
-    dd = dd[dd[:,2]>-1.26]
+    # dd = dd[dd[:,2]>-1.26]
     first_pc.points = o3d.utility.Vector3dVector(dd)
     m = create_homogeneous_matrix(-loc[starting_index-1,1], -loc[starting_index-1,0], -loc[starting_index-1,2], 180-rot[starting_index-1,0], 180-rot[starting_index-1,2], 180-rot[starting_index-1,1])
     first_pc.transform(m)
@@ -169,12 +171,12 @@ def find_truth_cd_matching_ball(path_to_bbox, starting_index, number_of_samples,
     
     for i in trange(starting_index + 1, starting_index+number_of_samples):
         if visualize:
-            i = i*10
+            i = i*100
         m = create_homogeneous_matrix(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], 180-rot[i-1,0], 180-rot[i-1,2], 180-rot[i-1,1])
         lt = dataset.open_measurement_sample_TLC(id, weather, time, sensor, i)
         other_dd = lt.data
         other_dd = other_dd[np.sum(other_dd[:,[0,1]]**2, axis=1) < max_distance**2]
-        other_dd = other_dd[other_dd[:,2]>-1.26]
+        # other_dd = other_dd[other_dd[:,2]>-1.26]
         pc = o3d.geometry.PointCloud()
         pc.points = o3d.utility.Vector3dVector(other_dd)
         pc.transform(m)
@@ -240,3 +242,78 @@ def find_next_transmission(path_to_bbox, starting_index, dataset, id, weather, t
         cd = np.sum(np.asarray(d1)**2) + np.sum(np.asarray(d2)**2)
         cds.append(cd)
     return cds, i
+
+def plot_all_toghether(dataset:datasetApi.Dataset, t, t_max, route, weather, time, sensors):
+    # def _create_homogeneous_matrix_BIS(x, y, z, x_rotation, y_rotation, z_rotation):
+    #     # Convert x_rotation, z_rotation, and y_rotation angles to radians
+    #     x_rotation = np.radians(x_rotation)
+    #     y_rotation = np.radians(y_rotation)
+    #     z_rotation = np.radians(z_rotation)
+
+    #     # Create rotation matrices for each angle
+    #     Rx = np.array([[1, 0, 0], [0, np.cos(x_rotation), -np.sin(x_rotation)], [0, np.sin(x_rotation), np.cos(x_rotation)]])
+    #     Ry = np.array([[np.cos(y_rotation), 0, np.sin(y_rotation)], [0, 1, 0], [-np.sin(y_rotation), 0, np.cos(y_rotation)]])
+    #     Rz = np.array([[np.cos(z_rotation), -np.sin(z_rotation), 0], [np.sin(z_rotation), np.cos(z_rotation), 0], [0, 0, 1]])
+
+    #     # Combine the rotation matrices
+    #     R = np.dot(Rz, np.dot(Ry, Rx))
+
+    #     # Create the translation vector
+    #     t = np.array([[x], [y], [z]])
+
+    #     # Combine the rotation matrix and translation vector into a homogeneous matrix
+    #     T = np.hstack((R, t))
+    #     T = np.vstack((T, np.array([0, 0, 0, 1])))
+    #     return T
+
+    if t_max == 0:
+        number_of_samples = dataset.get_measurement_series_length_TLC(route, weather, time, sensors[0])
+    else:
+        number_of_samples = t_max
+    pals = [sns.color_palette("viridis", int(np.ceil(number_of_samples)/t)+2),
+            sns.color_palette("rocket", int(np.ceil(number_of_samples)/t)+2),
+            sns.color_palette("plasma", int(np.ceil(number_of_samples)/t)+2)]
+    j=0
+    pcs = []
+    with h5py.File(dataset.get_path_bbox(route, weather, time),'r') as f:
+        root_grp = f.get("BBOX")
+        ids = list(root_grp.keys())
+        for id_actor in ids:
+            agent = root_grp.get(id_actor)
+            if "vehicle" in agent.attrs['type']:
+                ego = root_grp.get(id_actor)
+                break
+        loc = np.array(ego.get('location'))
+        rot = np.array(ego.get('rotation'))
+    for i in trange(1, number_of_samples, t):
+        for idx_s, s in enumerate(sensors):
+            # print(loc[i-1,2])
+            # m = _create_homogeneous_matrix_BIS(-loc[i-1,1], -loc[i-1,0], loc[i-1,2], -rot[i-1,2], -rot[i-1,0], -rot[i-1,1])
+            # m = _create_homogeneous_matrix_BIS(-loc[i-1,1], -loc[i-1,0], -loc[i-1,2], -rot[i-1,2], -rot[i-1,0], -rot[i-1,1])
+            lt = dataset.open_measurement_sample_TLC(route, weather, time, s, i)
+            pc = o3d.geometry.PointCloud()
+            pc.points = o3d.utility.Vector3dVector(lt.data)
+            # pc.transform(m)
+            # print(pc.get_rotation_matrix_from_xyz((np.radians(-rot[i-1,2]), np.radians(-rot[i-1,0]), np.radians(-rot[i-1,1]))))
+            # print(m)
+            T_sens = s.get_homogeneous_matrix()
+            T_rot = np.eye(4)
+            T_rot[:3, :3] = pc.get_rotation_matrix_from_xyz((np.radians(-rot[i-1,2]), np.radians(-rot[i-1,0]), np.radians(-rot[i-1,1])))
+            T_loc = np.eye(4)
+            T_loc[0:3,3] = [-loc[i-1,1], -loc[i-1,0], loc[i-1,2]]
+            T = np.dot(T_loc, T_rot)
+            T = np.dot(T, T_sens)
+            # T[0, 3] = -loc[i-1,1]
+            # T[1, 3] = -loc[i-1,0]
+            # T[2, 3] = -loc[i-1,2]
+            # pc.rotate(pc.get_rotation_matrix_from_xyz((np.radians(-rot[i-1,2]), np.radians(-rot[i-1,0]), np.radians(-rot[i-1,1]))), center=(0,0,0))
+            # pc.translate((-loc[i-1,1], -loc[i-1,0], loc[i-1,2]))
+            pc.transform(T)
+            pc.paint_uniform_color(pals[idx_s][j])
+            pcs.append(pc)
+            mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(
+                        #size=100, origin=[-loc[0,1], -loc[0,0], 0])
+                        size=5, origin=[-loc[i-1,1], -loc[i-1,0], loc[i-1,2]])
+            pcs.append(mesh_frame)
+        j+=1
+    o3d.visualization.draw_geometries(pcs)
