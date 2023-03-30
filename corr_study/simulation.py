@@ -25,8 +25,20 @@ class Simulation():
         self.mode = mode
         self.verbose = verbose
         self.ego_positions = self._open_positions()
+        self.bounding_boxes = self._open_bounding_boxes()
+        mobile = self._open_mobile_id()
+        self.pedestrians = mobile["pedestrian"]
+        self.vehicles = mobile["vehicle"]
+        self.bikes = mobile["bike"]
         self.opened_samples = {}
         self.ignore_ego = True
+        self.last_seen = set()
+        self.score_data = {"not seen" : {"bike": [],
+                                         "vehicle": [], 
+                                         "pedestrian": []},
+                           "distance" : {"bike": [],
+                                         "vehicle": [], 
+                                         "pedestrian": []}}
         for s in self.sensors:
             self.opened_samples[s] = []
         self.n_sample_to_open = 100
@@ -54,6 +66,47 @@ class Simulation():
                 print("Ego vehicle found as", ego, "\n")
         return {"loc":loc, "rot":rot}
     
+    def _open_bounding_boxes(self):
+        path_to_bbox = self.dataset.get_path_bbox(self.name, self.weather, self.time)
+        bbs = {}
+        with h5py.File(path_to_bbox,'r') as f:
+            root_grp = f.get("BBOX")
+            ids = list(root_grp.keys())
+            for id_actor in ids:
+                agent = root_grp.get(id_actor)
+                try:
+                    bb = agent.get('bounding_box')
+                    o3d.geometry.OrientedBoundingBox.create_from_points(o3d.utility.Vector3dVector(bb[0].T))
+                    bb_arr = np.array(bb)
+                    bb_arr[:,[0,1],:] = -bb_arr[:,[1,0],:]
+                    bbs[int(id_actor)] = bb_arr
+                except:
+                    pass
+            if self.verbose:
+                print("Opened", len(bbs.keys()), "bounding boxes", "\n")
+        return bbs
+    
+    def _open_mobile_id(self):
+        path_to_bbox = self.dataset.get_path_bbox(self.name, self.weather, self.time)
+        mobile = {"pedestrian": [],
+                  "vehicle" : [],
+                  "bike": []}
+        with h5py.File(path_to_bbox,'r') as f:
+            root_grp = f.get("BBOX")
+            ids = list(root_grp.keys())
+            for id_actor in ids:
+                agent = root_grp.get(id_actor)
+                ty = agent.attrs["type"]
+                if "bike" in ty:
+                    mobile["bike"].append(int(id_actor))
+                elif "pedestrian" in ty:
+                    mobile["pedestrian"].append(int(id_actor))
+                else:
+                    mobile["vehicle"].append(int(id_actor))
+            if self.verbose:
+                print(mobile, "\n")
+        return mobile
+    
     def go_next_frame(self):
         if self.visualize:
             self.frame_idx = self.frame_idx + 1
@@ -76,8 +129,10 @@ class Simulation():
         self.frame_position = [-self.ego_positions["loc"][self.frame_idx-1,1], 
                                -self.ego_positions["loc"][self.frame_idx-1,0], 
                                 self.ego_positions["loc"][self.frame_idx-1,2]]
+        self.visible_actors = []
         for sensor in self.sensors:
             pcs = self.dataset.open_measurement_sample_TLC(self.name, self.weather, self.time, sensor, self.frame_idx)
+            self.visible_actors.append(np.delete(np.unique(pcs.ground_truth[:,1]),0))
             #pcs = self._open_or_read_sample(self.name, self.weather, self.time, sensor, self.frame_idx)
             if self.ignore_ego:
                 pcs.data = pcs.data[pcs.ground_truth[:,1] != self.ego_id,:]
@@ -165,20 +220,117 @@ class Simulation():
         self.last_sent = pcd
         self.list_last_sent = actual_transmitted_stuff 
 
+    def receive(self, transmit):
+        # Faking the logic to do object detection
+        seen_object = set()
+        for sensor_seen, t in zip(self.visible_actors, transmit):
+            if t:
+                seen_object.update(sensor_seen)
+        return seen_object
+    
+    def score(self, true_bb, computed_bb):
+        bikes = []
+        vehicles = []
+        pedestrians = []
+        new_bikes = 0
+        new_vehicles = 0
+        new_pedestrians = 0
+        in_sight_agents = set()
+        for p in self.visible_actors:
+            in_sight_agents.update(p)
+        for agent in in_sight_agents:
+            if agent in true_bb:
+                if agent in computed_bb:
+                    # Compute distance between centers
+                    c1 = np.asarray(true_bb[agent].center) 
+                    c2 = np.asarray(computed_bb[agent].center)
+                    d = np.linalg.norm(c1 - c2)
+                    if agent in self.bikes:
+                        bikes.append(d)
+                    elif agent in self.vehicles:
+                        vehicles.append(d)
+                    elif agent in self.pedestrians:
+                        pedestrians.append(d)
+                else:
+                    if agent in self.bikes:
+                        new_bikes += 1
+                    elif agent in self.vehicles:
+                        new_vehicles += 1
+                    elif agent in self.pedestrians:
+                        new_pedestrians += 1
+        self.score_data["not seen"]["bike"].append(new_bikes)
+        self.score_data["not seen"]["vehicle"].append(new_vehicles)
+        self.score_data["not seen"]["pedestrian"].append(new_pedestrians)
+        mb = np.mean(bikes)
+        if np.isnan(mb):
+            mb = 0
+        mv = np.mean(vehicles)
+        if np.isnan(mv):
+            mv = 0
+        mp = np.mean(pedestrians)
+        if np.isnan(mp):
+            mp = 0
+        self.score_data["distance"]["bike"].append(mb)
+        self.score_data["distance"]["vehicle"].append(mv)
+        self.score_data["distance"]["pedestrian"].append(mp)
+
+            
+
+
     def simulate(self):
         if self.visualize:
             vis = o3d.visualization.Visualizer()
             vis.create_window()
             vis_pcd = o3d.geometry.PointCloud(self.open_this_frame_measurements()[0].points)
             vis.add_geometry(vis_pcd)
+            keys = self.bounding_boxes.keys()
+            visualized_bb = {}
+            visualized_bb_receiver = {}
+            for k in keys:
+                visualized_bb[k] = o3d.geometry.OrientedBoundingBox.create_from_points(o3d.utility.Vector3dVector(self.bounding_boxes[k][0].T))
+                visualized_bb[k].color = [0,0,0]
+                vis.add_geometry(visualized_bb[k])
+            # axis = o3d.geometry.TriangleMesh.create_coordinate_frame(size=100.0, origin=np.array([-178.81439 , -221.79384   ,   1.9676304]))
+            # vis.add_geometry(axis)
         for _ in trange(self.frame_idx, len(self)):
             self.frame_data = self.open_this_frame_measurements()
             transmit = self.decide_if_transmit()
             self.transmit(transmit)
+            seen_object = self.receive(transmit)
             if self.visualize:
-                
+
+                # GT BBOX
+                for k in keys:
+                    bbi = o3d.geometry.OrientedBoundingBox.create_from_points(o3d.utility.Vector3dVector(self.bounding_boxes[k][self.frame_idx-1].T))
+                    visualized_bb[k].color = [0,0,0]
+                    visualized_bb[k].R = bbi.R
+                    visualized_bb[k].center = bbi.center
+                    visualized_bb[k].extent = bbi.extent
+                    vis.update_geometry(visualized_bb[k])
+
+                # POINTCLOUD
                 vis_pcd.points = self.last_sent.points
                 vis.update_geometry(vis_pcd)
+
+                # RECEIVED BBOX
+                    
+                diff = seen_object.difference(self.last_seen)
+                for new_seen in diff:
+                    visualized_bb_receiver[new_seen] = o3d.geometry.OrientedBoundingBox.create_from_points(o3d.utility.Vector3dVector(self.bounding_boxes[k][self.frame_idx-1].T))
+                    visualized_bb_receiver[new_seen].color = [1,0,0]
+                    vis.add_geometry(visualized_bb_receiver[new_seen], reset_bounding_box=False)
+                for seen in seen_object:
+                    if seen in visualized_bb:
+                        visualized_bb[seen].color = [1,0,0]
+                        temp = o3d.geometry.OrientedBoundingBox.create_from_points(o3d.utility.Vector3dVector(self.bounding_boxes[seen][self.frame_idx-1].T))
+                        visualized_bb_receiver[seen].R = temp.R
+                        visualized_bb_receiver[seen].center = temp.center
+                        visualized_bb_receiver[seen].extent = temp.extent
+                        vis.update_geometry(visualized_bb_receiver[seen])
+                        visualized_bb_receiver[seen]
+                self.last_seen = self.last_seen.union(seen_object)
+                self.score(visualized_bb, visualized_bb_receiver)
+                # UPDATE VIEW
                 vis.poll_events()
                 vis.update_renderer()
             self.go_next_frame()
