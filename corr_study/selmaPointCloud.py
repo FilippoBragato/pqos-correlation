@@ -37,7 +37,7 @@ class SelmaPointCloud:
         if not inferred and self.ground_truth is not None:
             palette = sns.color_palette("hsv", n_colors=36)
             get_color = lambda tag:palette[tag%36] if tag != 0 else (1.0,1.0,1.0)
-            colors = np.array(np.vectorize(get_color)(self.ground_truth[:,1])).T
+            colors = np.array(np.vectorize(get_color)(self.ground_truth[:,0])).T
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
         if inferred and hasattr(self, 'isMobile'):

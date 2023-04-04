@@ -326,7 +326,8 @@ class Dataset:
             data = PlyData.read(file_path)
             points = [data['vertex'][axis] for axis in ['x', 'y', 'z']]
             points = np.array(points).T
-            objTag = data['vertex']['ObjTag']
+            objTag = [data['vertex'][gt] for gt in ['ObjTag', 'ObjIdx']]
+            objTag = np.array(objTag).T
             out = SelmaPointCloud(points, objTag)
         elif (sensor.getEstention() == ".jpg"):
             raise ValueError("Implementami")
