@@ -5,6 +5,7 @@ import numpy as np
 import h5py
 from .selmaImage import SelmaImage
 from .selmaPointCloud import SelmaPointCloud
+import open3d as o3d
 
 class Town(Enum):
     """Town available in the dataset
@@ -140,7 +141,7 @@ class Dataset:
         """
         return os.listdir(self._get_path_archives_TLC())
     
-    def _get_path_h5(self, route:str, weather:Weather, time:Time, sensor:Sensor) -> str:
+    def _get_path_h5_folder(self, route:str, weather:Weather, time:Time, sensor:Sensor) -> str:
         """Get the path to the archive file whit the desired parameters
 
         Args:
@@ -155,8 +156,37 @@ class Dataset:
         return os.path.join(self._get_path_archives_TLC(),
                             route,
                             weather.value+time.value,
-                            sensor.value,
+                            sensor.value)
+    
+    def _get_path_h5_original(self, route:str, weather:Weather, time:Time, sensor:Sensor) -> str:
+        """Get the path to the archive file whit the desired parameters
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+
+        Returns:
+            str: path to the archive file
+        """
+        return os.path.join(self._get_path_h5_folder(route, weather, time, sensor),
                             route+"-"+weather.value+time.value+"-"+sensor.value+".hdf5")
+    
+    def _get_path_h5_fully_oriented(self, route:str, weather:Weather, time:Time, sensor:Sensor) -> str:
+        """Get the path to the archive file whit the desired parameters
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+
+        Returns:
+            str: path to the archive file
+        """
+        return os.path.join(self._get_path_h5_folder(route, weather, time, sensor),
+                            "fully_oriented.hdf5")
     
     def get_path_bbox(self, route:str, weather:Weather, time:Time) -> str:
         return os.path.join(self._get_path_archives_TLC(),
@@ -177,7 +207,7 @@ class Dataset:
             list(Obj): list of required data
         """
         out = []
-        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+        with h5py.File(self._get_path_h5_original(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = list(f[main_group_key].keys())
             for k in time_group_key:
@@ -198,7 +228,7 @@ class Dataset:
         Returns:
             list(Obj): list of required data
         """
-        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+        with h5py.File(self._get_path_h5_original(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = list(f[main_group_key].keys())
             out = len(time_group_key) - 1
@@ -216,7 +246,7 @@ class Dataset:
         Returns:
             obj: the desired item
         """
-        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+        with h5py.File(self._get_path_h5_original(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             time_group_key = str(time_step).zfill(5)
             if sensor.getType() == "PointCloud":
@@ -225,6 +255,45 @@ class Dataset:
             elif sensor.getType() == "Image":
                 out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
         return out
+    
+    def open_measurement_sample_TLC_fully_oriented(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
+        """Open the archive of the desired simulation and returns the required sample
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+            time_step (int): the time step that has to be extracted from the serie
+
+        Returns:
+            obj: the desired item
+        """
+        with h5py.File(self._get_path_h5_fully_oriented(route, weather, time, sensor), "r") as f:
+            main_group_key = list(f.keys())[0]
+            time_group_key = str(time_step).zfill(5)
+            if sensor.getType() == "PointCloud":
+                array_data = f[main_group_key][time_group_key][()]
+                out = SelmaPointCloud(array_data[:,[0,1,2]], ground_truth=array_data[:,[4,3]].astype(int), time_step=time_step)
+            elif sensor.getType() == "Image":
+                out = SelmaImage(f[main_group_key][time_group_key][()], time_step=time_step)
+        return out
+    
+    def open_test(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_step:int):
+        """Open the archive of the desired simulation and returns the required sample
+
+        Args:
+            route (str): identifier of the route
+            weather (Weather): The wether with which the simulaiton has been performed
+            time (Time): The time in which the simulaiton has been performed
+            sensor (Sensor): The sensor mesuring in the simulaiton
+            time_step (int): the time step that has to be extracted from the serie
+
+        Returns:
+            obj: the desired item
+        """
+        base = self._get_path_h5_folder(route, weather, time, sensor) + "/preprocessed/"
+        return o3d.io.read_point_cloud(base + str(time_step).zfill(5) + ".pcd")
     
     def open_measurement_samples_TLC(self, route:str, weather:Weather, time:Time, sensor:Sensor, time_steps):
         """Open the archive of the desired simulation and returns the required sample
@@ -240,7 +309,7 @@ class Dataset:
             obj: the desired item
         """
         out = []
-        with h5py.File(self._get_path_h5(route, weather, time, sensor), "r") as f:
+        with h5py.File(self._get_path_h5_original(route, weather, time, sensor), "r") as f:
             main_group_key = list(f.keys())[0]
             for time_step in time_steps:
                 time_group_key = str(time_step).zfill(5)

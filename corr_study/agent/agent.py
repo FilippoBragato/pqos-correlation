@@ -86,13 +86,11 @@ class Agent():
     def reset(self):
         """Delete all temporary stored data
         """
-        self.imsi_list = []
-        self.states = []
-        self.action_indexes = []
-        self.rewards = []
-        self.old_imsi_list = []
+        self.state = []
+        self.action_index = []
+        self.reward = []
         self.old_state = []
-        self.old_action_indexes = []
+        self.old_action_index = []
 
     def get_action(self,
                    state: np.ndarray,
@@ -139,7 +137,7 @@ class Agent():
         self.data_idx += 1
 
         
-        self.temperature_data[self.data_idx] = temp
+        # self.temperature_data[self.data_idx] = temp
         
         # we get in input lists but the values corresponding to this agent are always at index 0
         # user_idx = 0
@@ -216,8 +214,6 @@ class Agent():
         self.q_value_data = np.load(data_folder + 'q_values.npy')
         self.temperature_data = np.load(data_folder + 'temperatures.npy')
         self.loss_data = np.load(data_folder + 'losses.npy')
-        self.qos_data = np.load(data_folder + 'qos.npy')
-        self.chamfer_data = np.load(data_folder + 'chamfer_distances.npy')
 
 
     def load_model(self, data_folder: str):
