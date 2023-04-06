@@ -26,7 +26,6 @@ Stage: spython-base
     # Put conda in path so we can use conda activate
     PATH=$CONDA_DIR/bin:$PATH
     conda install python=3.9
-    conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
     pip install numba==0.48.0
     pip install numpy==1.19.5
     pip install open3d==0.14.1
@@ -34,7 +33,7 @@ Stage: spython-base
     pip install pointpillars.egg==info
     pip install PyYAML==6.0
     pip install setuptools==58.0.4
-    pip install torch==1.8.1+cu111
+    conda install pytorch torchvision torchaudio pytorch-cuda=11.7 -c pytorch -c nvidia
     pip install tqdm==4.62.3
 
 
