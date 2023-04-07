@@ -1,0 +1,32 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.0.0-cuda11.7-cudnn8-devel
+
+%help
+    Singularity recipe for using PointPillars from https://github.com/FilippoBragato/PointPillars
+
+%post
+
+    apt-get update && apt-get install wget -yq
+    apt-get install build-essential g++ gcc -y
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get install libgl1-mesa-glx libglib2.0-0 -y
+
+    apt-get install openmpi-bin openmpi-common libopenmpi-dev libgtk2.0-dev git -y
+
+    /opt/conda/bin/pip install setuptools
+    /opt/conda/bin/pip install numba
+    
+    git clone https://github.com/FilippoBragato/PointPillars
+    cd PointPillars/ops/
+    /opt/conda/bin/python setup.py develop
+
+    unset DEBIAN_FRONTEND
+    
+%environment
+    export DEBIAN_FRONTEND=noninteractive
+
+%runscript
+    exec /bin/bash "$@"
+
+%startscript
+    exec /bin/bash "$@"
