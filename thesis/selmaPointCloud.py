@@ -165,8 +165,8 @@ class SelmaPointCloud:
         sample_b = target.data
         
         if crop_street:
-            sample_a = sample_a[sample_a[:,2]>-0.9]
-            sample_b = sample_b[sample_b[:,2]>-0.9]
+            sample_a = sample_a[sample_a[:,2]>-1.55]
+            sample_b = sample_b[sample_b[:,2]>-1.55]
 
         min_x = min(np.min(sample_a[:, 0]),np.min(sample_b[:, 0]))
         min_y = min(np.min(sample_a[:, 1]),np.min(sample_b[:, 1]))
@@ -182,12 +182,12 @@ class SelmaPointCloud:
 
         return vox_a.compute_intersection_size(vox_b)
 
-    def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=CENTER_OF_MASS, crop_street=False, init_transform=None, visualize=False, return_mse=False):
+    def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=NO, crop_street=False, init_transform=None, visualize=False, return_mse=False):
         sample_a = self.data
         sample_b = target.data
         if crop_street:
-            sample_a = sample_a[sample_a[:,2]>-0.9]
-            sample_b = sample_b[sample_b[:,2]>-0.9]
+            sample_a = sample_a[sample_a[:,2]>-1.55]
+            sample_b = sample_b[sample_b[:,2]>-1.55]
         if mode == CENTER_OF_MASS:
             sample_a = sample_a- self.compute_center_of_mass(weighted=weighted)
             sample_b = sample_b - target.compute_center_of_mass(weighted=weighted)
