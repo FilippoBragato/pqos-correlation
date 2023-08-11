@@ -182,7 +182,7 @@ class SelmaPointCloud:
 
         return vox_a.compute_intersection_size(vox_b)
 
-    def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=NO, crop_street=False, init_transform=None, visualize=False, return_mse=False):
+    def compare_using_clusters(self, target, number_of_clusters, weighted=False, mode=NO, crop_street=False, init_transform=None, visualize=False, return_mse=False, kmeans_a=None, kmeans_b=None):
         sample_a = self.data
         sample_b = target.data
         if crop_street:
@@ -197,15 +197,24 @@ class SelmaPointCloud:
             pc_a.points = o3d.utility.Vector3dVector(sample_a)
             pc_a.transform(transformation)
             sample_a = np.asarray(pc_a.points)
-        kmeans_a = KMeans(n_clusters=number_of_clusters, n_init='auto')
-        kmeans_a.fit(sample_a)
-        kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_a.cluster_centers_, n_init=1)
+        if kmeans_a is None:
+            kmeans_a = KMeans(n_clusters=number_of_clusters, n_init='auto')
+            kmeans_a.fit(sample_a)
+        if kmeans_b is None:
+            kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_a.cluster_centers_, n_init=1)
+        else:
+            kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_b.cluster_centers_, n_init=1)
         kmeans_b.fit(sample_b)
         if return_mse:
             if mode == ICP_REGISTRATION:
                 return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_), transformation
             else:
-                return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_)
+                dissimilarity = 0
+                for ca, cb in zip(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_):
+                    # compute the distance between the two clusters
+                    distance = cdist(ca, cb)
+                    dissimilarity += distance
+                return dissimilarity, (kmeans_a, kmeans_b)
 
         if mode == ICP_REGISTRATION:
             return correlation.comupte_correlation(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_), transformation
