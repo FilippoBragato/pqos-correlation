@@ -10,7 +10,7 @@ from tqdm import trange
 import copy
 from scipy.ndimage import label, generate_binary_structure
 from scipy.spatial.distance import cdist
-
+import math
 
 NOTHING = -1
 CENTER_OF_MASS = 0
@@ -44,12 +44,14 @@ class SelmaPointCloud:
             palette = sns.color_palette("hsv", n_colors=150)
             get_color = lambda tag:palette[tag%150] if tag != 0 else (1.0,1.0,1.0)
             colors = np.array(np.vectorize(get_color)(self.isMobile)).T
+            print(colors.shape)
+            print(colors)
             pcd.colors = o3d.utility.Vector3dVector(colors)
 
         vis = o3d.visualization.Visualizer()
         vis.create_window()
         vis.add_geometry(pcd)
-        vis.get_render_option().background_color = np.asarray([0, 0, 0])
+        # vis.get_render_option().background_color = np.asarray([0, 0, 0])
         vis.run()
         vis.destroy_window()
 
@@ -186,8 +188,8 @@ class SelmaPointCloud:
         sample_a = self.data
         sample_b = target.data
         if crop_street:
-            sample_a = sample_a[sample_a[:,2]>-1.55]
-            sample_b = sample_b[sample_b[:,2]>-1.55]
+            sample_a = sample_a[sample_a[:,2]>0.125]
+            sample_b = sample_b[sample_b[:,2]>0.125]
         if mode == CENTER_OF_MASS:
             sample_a = sample_a- self.compute_center_of_mass(weighted=weighted)
             sample_b = sample_b - target.compute_center_of_mass(weighted=weighted)
@@ -205,6 +207,9 @@ class SelmaPointCloud:
         else:
             kmeans_b = KMeans(n_clusters=number_of_clusters, init=kmeans_b.cluster_centers_, n_init=1)
         kmeans_b.fit(sample_b)
+        if visualize:
+            vis_pointcloud = SelmaPointCloud(sample_b, ground_truth=np.repeat(kmeans_b.labels_[:,np.newaxis] + 1, 2, axis=1))
+            vis_pointcloud.visualize()
         if return_mse:
             if mode == ICP_REGISTRATION:
                 return mean_squared_error(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_), transformation
@@ -212,7 +217,7 @@ class SelmaPointCloud:
                 dissimilarity = 0
                 for ca, cb in zip(kmeans_a.cluster_centers_, kmeans_b.cluster_centers_):
                     # compute the distance between the two clusters
-                    distance = cdist(ca, cb)
+                    distance = math.dist(ca, cb)
                     dissimilarity += distance
                 return dissimilarity, (kmeans_a, kmeans_b)
 
